@@ -3,449 +3,509 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>步数轻小说奖励阅读器</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
+    <title>计步阅读器</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        * { box-sizing: border-box; }
-        body, html {
-            margin: 0; padding: 0; width: 100%; height: 100%;
-            background-color: #121212; color: #fff; overflow: hidden;
-            font-family: sans-serif;
+        :root {
+            --theme-bg: #121212;
+            --panel-bg: #1e1e1e;
+            --text-color: #ffffff;
+            --accent-color: #4CAF50;
         }
-        
-        /* 核心文本显示区 */
-        #sentence-display {
-            position: absolute;
-            /* 禁用任何过度动画，满足每次直接刷新的要求 */
-            transition: none;
-            cursor: default;
-            user-select: none;
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body { 
+            background-color: var(--theme-bg); 
+            color: var(--text-color); 
+            font-family: sans-serif; 
+            overflow: hidden; 
+            height: 100vh; 
+            width: 100vw;
         }
 
-        /* 隐藏面板时的底部极简进度条 */
-        #mini-progress-bar-container {
-            position: fixed; bottom: 0; left: 0; width: 100%; height: 6px;
-            background: #333; z-index: 99; cursor: pointer;
+        /* 句子展示区 */
+        #display-area {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* 让点击穿透到底部面板 */
         }
-        #mini-progress-bar {
-            height: 100%; width: 0%; background: #00e5ff;
-            transition: width 0.3s ease;
+        #sentence-container {
+            position: absolute;
+            display: none; /* 初始隐藏 */
+            white-space: nowrap;
+            /* 绝对不要加 transition */
         }
-        
+        #sentence-container span {
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        /* 细线进度条 (收起面板时显示) */
+        #thin-progress-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: #333;
+            z-index: 100;
+        }
+        #thin-progress-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--accent-color);
+        }
+
         /* 设置面板 */
         #settings-panel {
-            position: fixed; bottom: 0; left: 0; width: 100%;
-            background: rgba(30, 30, 30, 0.95);
-            padding: 15px 20px 25px 20px;
-            border-top: 1px solid #444;
-            transform: translateY(0);
-            transition: transform 0.3s ease-in-out;
-            z-index: 100;
-            display: flex; flex-direction: column; gap: 10px;
-            backdrop-filter: blur(10px);
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: var(--panel-bg);
+            border-top-left-radius: 16px;
+            border-top-right-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 -4px 10px rgba(0,0,0,0.5);
+            transition: transform 0.3s ease;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            pointer-events: auto;
         }
         #settings-panel.hidden {
             transform: translateY(100%);
         }
-
-        /* 控件样式 */
-        .control-row {
-            display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
-        }
-        .control-group {
-            display: flex; align-items: center; gap: 5px; font-size: 14px;
-        }
-        input[type="range"] { flex-grow: 1; }
-        input[type="number"] { width: 60px; background: #333; color: white; border: 1px solid #555; border-radius: 4px; padding: 2px 5px;}
-        select, button, input[type="file"] {
-            background: #333; color: #fff; border: 1px solid #555; border-radius: 5px; padding: 5px 10px; font-size: 14px;
-        }
-        button:hover, select:hover { background: #444; cursor: pointer; }
         
+        /* 面板开关按钮 */
         #toggle-panel-btn {
-            position: absolute; top: -35px; right: 10px;
-            background: rgba(30, 30, 30, 0.9); border: 1px solid #444; border-bottom: none;
-            border-radius: 8px 8px 0 0; padding: 5px 15px; color: white; cursor: pointer;
+            position: absolute;
+            top: -40px;
+            right: 20px;
+            background: var(--panel-bg);
+            color: var(--text-color);
+            border: none;
+            border-radius: 20px;
+            padding: 8px 16px;
+            font-size: 14px;
+            box-shadow: 0 -2px 5px rgba(0,0,0,0.3);
+            cursor: pointer;
         }
 
-        /* 状态展示 */
-        .status-display {
-            display: flex; justify-content: space-between; font-weight: bold; color: #00e5ff;
-            font-size: 16px; margin-bottom: 5px;
+        .control-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 14px;
         }
-        .main-progress-container { width: 100%; display: flex; align-items: center; gap: 10px; }
-        #main-progress-slider { flex-grow: 1; }
+        .control-group label { flex-shrink: 0; width: 70px;}
+        input[type="range"] { flex-grow: 1; margin: 0 10px; }
+        input[type="number"] {
+            width: 60px;
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 4px;
+            text-align: center;
+        }
+        input[type="file"] { max-width: 200px; font-size: 12px; }
+        
+        .btn {
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        /* 顶部统计 */
+        #stats-bar {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            font-size: 14px;
+            color: #888;
+            z-index: 50;
+        }
+        
+        /* 进度数字动画区 */
+        #progress-text-container {
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--accent-color);
+            margin-bottom: 5px;
+        }
     </style>
 </head>
 <body>
 
-    <div id="sentence-display"></div>
+    <div id="stats-bar">
+        步数: <span id="step-count">0</span> | 待读: <span id="queue-count">0</span>句
+    </div>
 
-    <div id="mini-progress-bar-container" onclick="togglePanel()">
-        <div id="mini-progress-bar"></div>
+    <div id="display-area">
+        <div id="sentence-container"></div>
+    </div>
+
+    <div id="thin-progress-bar">
+        <div id="thin-progress-fill"></div>
     </div>
 
     <div id="settings-panel">
-        <button id="toggle-panel-btn" onclick="togglePanel()">隐藏设置 ▼</button>
+        <button id="toggle-panel-btn">隐藏面板</button>
         
-        <div class="status-display">
-            <span>当前步数: <span id="step-count">0</span>/100 (每满100步读一句)</span>
-            <span>进度: <span id="percent-display">0.00</span>%</span>
+        <div id="progress-text-container">阅读进度: <span id="progress-percent">0.00</span>%</div>
+
+        <div class="control-group">
+            <label>上传书籍:</label>
+            <input type="file" id="file-input" accept=".txt,.epub">
         </div>
 
-        <div class="main-progress-container">
-            <input type="range" id="main-progress-slider" min="0" max="1000" value="0" title="拖动调整阅读进度">
+        <div class="control-group">
+            <label>主进度:</label>
+            <input type="range" id="main-progress" min="0" max="100" step="0.01" value="0">
         </div>
 
-        <div class="control-row">
-            <div class="control-group">
-                <label>书籍:</label>
-                <input type="file" id="book-upload" accept=".txt,.epub">
-            </div>
-            <div class="control-group">
-                <label>发音人:</label>
-                <select id="voice-select"></select>
-            </div>
-            <button onclick="simulateSteps(100)">测试: +100步</button>
+        <div class="control-group">
+            <label>语速:</label>
+            <input type="range" id="rate-slider" min="0.1" max="3.0" step="0.1" value="1.0">
+            <input type="number" id="rate-input" min="0.1" max="3.0" step="0.1" value="1.0">
         </div>
 
-        <div class="control-row">
-            <div class="control-group">
-                <label>语速:</label>
-                <input type="range" id="speed-slider" min="0.5" max="2.0" step="0.1" value="1.0">
-                <input type="number" id="speed-input" min="0.5" max="2.0" step="0.1" value="1.0">
-            </div>
-            <div class="control-group">
-                <label>音量:</label>
-                <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="1">
-            </div>
-            <div class="control-group">
-                <label>字号范围:</label>
-                <input type="number" id="min-size" value="24" placeholder="最小"> - 
-                <input type="number" id="max-size" value="72" placeholder="最大">
-            </div>
+        <div class="control-group">
+            <label>音量:</label>
+            <input type="range" id="volume-slider" min="0.0" max="1.0" step="0.1" value="1.0">
+            <input type="number" id="volume-input" min="0.0" max="1.0" step="0.1" value="1.0">
         </div>
+
+        <div class="control-group">
+            <label>最小字号:</label>
+            <input type="number" id="min-font-size" value="16">
+            <label style="margin-left:10px; width: auto;">最大字号:</label>
+            <input type="number" id="max-font-size" value="48">
+        </div>
+
+        <button class="btn" id="start-btn">申请传感器权限并启动</button>
+        <button class="btn" id="sim-btn" style="background:#555;">(测试) 模拟走100步</button>
     </div>
 
     <script>
-        // --- 状态与数据管理 ---
+        // --- 全局状态 ---
         let sentences = [];
         let currentIndex = 0;
-        let stepCount = 0;
+        let steps = 0;
         let pendingSentences = 0;
         let isSpeaking = false;
-        let currentDisplayedPercent = 0;
-        const availableFonts = ['Arial', 'Microsoft YaHei', 'SimHei', 'KaiTi', 'FangSong', 'SimSun', 'Verdana', 'Courier New'];
+        let currentUtterance = null; // 防止GC回收导致onend不触发
+        let lastAccel = 0;
+        let lastStepTime = 0;
+        let displayPercent = 0; // 用于数字动画
 
-        // DOM 元素
-        const displayDiv = document.getElementById('sentence-display');
-        const stepCountEl = document.getElementById('step-count');
-        const percentDisplayEl = document.getElementById('percent-display');
-        const miniProgressBar = document.getElementById('mini-progress-bar');
-        const mainProgressSlider = document.getElementById('main-progress-slider');
-        const speedSlider = document.getElementById('speed-slider');
-        const speedInput = document.getElementById('speed-input');
-        const volumeSlider = document.getElementById('volume-slider');
-        const voiceSelect = document.getElementById('voice-select');
+        // 可用字体库 (常见中英文字体)
+        const fontFamilies = ['Arial', 'Courier New', 'Georgia', 'Times New Roman', 'Verdana', 'SimSun', 'SimHei', 'Microsoft YaHei', 'KaiTi', 'FangSong', 'LiSu'];
 
-        // --- 初始化与事件监听 ---
-        document.getElementById('book-upload').addEventListener('change', handleFileUpload);
-        
-        // 语速同步 (滑块与键盘输入)
-        speedSlider.addEventListener('input', (e) => speedInput.value = e.target.value);
-        speedInput.addEventListener('input', (e) => speedSlider.value = e.target.value);
-        
-        // 进度条拖拽事件 (确保不影响当前正在播放的句子，仅改变索引)
-        mainProgressSlider.addEventListener('input', (e) => {
-            if(sentences.length === 0) return;
-            const ratio = e.target.value / 1000;
-            currentIndex = Math.floor(ratio * (sentences.length - 1));
-            animatePercentage(ratio * 100);
-            updateMiniProgress();
+        // --- DOM 元素 ---
+        const ui = {
+            panel: document.getElementById('settings-panel'),
+            toggleBtn: document.getElementById('toggle-panel-btn'),
+            fileInput: document.getElementById('file-input'),
+            mainProgress: document.getElementById('main-progress'),
+            progressPercent: document.getElementById('progress-percent'),
+            thinProgressFill: document.getElementById('thin-progress-fill'),
+            rateSlider: document.getElementById('rate-slider'),
+            rateInput: document.getElementById('rate-input'),
+            volumeSlider: document.getElementById('volume-slider'),
+            volumeInput: document.getElementById('volume-input'),
+            minFont: document.getElementById('min-font-size'),
+            maxFont: document.getElementById('max-font-size'),
+            startBtn: document.getElementById('start-btn'),
+            simBtn: document.getElementById('sim-btn'),
+            sentenceContainer: document.getElementById('sentence-container'),
+            stepCount: document.getElementById('step-count'),
+            queueCount: document.getElementById('queue-count')
+        };
+
+        // --- 初始化绑定 ---
+        ui.toggleBtn.addEventListener('click', () => {
+            ui.panel.classList.toggle('hidden');
+            ui.toggleBtn.innerText = ui.panel.classList.contains('hidden') ? '展开面板' : '隐藏面板';
         });
 
-        // TTS 语音列表加载
-        let voices = [];
-        function populateVoiceList() {
-            voices = speechSynthesis.getVoices();
-            voiceSelect.innerHTML = '';
-            let xiaoxiaoSelected = false;
-
-            // 添加一个模拟的 Gemini 选项（仅作展示，纯前端无法直接调用）
-            const geminiOption = document.createElement('option');
-            geminiOption.textContent = 'Gemini TTS (需后端API支持)';
-            geminiOption.value = 'gemini';
-            voiceSelect.appendChild(geminiOption);
-
-            voices.forEach((voice, i) => {
-                const option = document.createElement('option');
-                option.textContent = `${voice.name} (${voice.lang})`;
-                option.value = i;
-                // 默认选中 Edge 的 Xiaoxiao
-                if (voice.name.includes('Xiaoxiao')) {
-                    option.selected = true;
-                    xiaoxiaoSelected = true;
-                }
-                voiceSelect.appendChild(option);
+        // 联动输入框和滑块
+        function syncInputs(slider, input) {
+            slider.addEventListener('input', () => input.value = slider.value);
+            input.addEventListener('input', () => {
+                let val = parseFloat(input.value);
+                if (val >= parseFloat(slider.min) && val <= parseFloat(slider.max)) slider.value = val;
             });
-            
-            // 如果没找到 Xiaoxiao，默认选第一个中文
-            if (!xiaoxiaoSelected) {
-                const firstZh = voices.findIndex(v => v.lang.includes('zh'));
-                if (firstZh !== -1) voiceSelect.value = firstZh;
-            }
         }
-        if (speechSynthesis.onvoiceschanged !== undefined) {
-            speechSynthesis.onvoiceschanged = populateVoiceList;
-        }
+        syncInputs(ui.rateSlider, ui.rateInput);
+        syncInputs(ui.volumeSlider, ui.volumeInput);
 
-        // --- 文件解析逻辑 ---
-        function handleFileUpload(e) {
+        // --- 文件解析模块 (TXT & EPUB) ---
+        ui.fileInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-
+            let text = '';
+            
             if (file.name.endsWith('.txt')) {
-                const reader = new FileReader();
-                reader.onload = (evt) => processText(evt.target.result);
-                reader.readAsText(file);
+                text = await file.text();
             } else if (file.name.endsWith('.epub')) {
-                const reader = new FileReader();
-                reader.onload = function(evt) {
-                    const book = ePub(evt.target.result);
-                    parseEpub(book);
-                };
-                reader.readAsArrayBuffer(file);
-            }
-        }
-
-        async function parseEpub(book) {
-            sentences = [];
-            try {
-                await book.ready;
-                const spine = book.spine;
-                let fullText = "";
-                // 遍历EPUB章节提取纯文本
-                for (let i = 0; i < spine.length; i++) {
-                    const item = spine.get(i);
-                    const doc = await book.load(item.href);
-                    fullText += doc.body.textContent + " ";
-                }
-                processText(fullText);
-            } catch (err) {
-                alert("EPUB 解析失败，请尝试 TXT 格式。");
-            }
-        }
-
-        function processText(text) {
-            // 使用正则匹配完整的句子，保留标点符号
-            sentences = text.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [];
-            // 过滤纯空白句
-            sentences = sentences.map(s => s.trim()).filter(s => s.length > 0);
-            currentIndex = 0;
-            currentDisplayedPercent = 0;
-            updateProgressUI();
-            alert(`书籍加载成功！共 ${sentences.length} 句话。开始走路（或点击测试按钮）开始阅读吧！`);
-        }
-
-        // --- 核心阅读逻辑 (TTS 与 视觉呈现) ---
-        function attemptRead() {
-            if (isSpeaking || pendingSentences <= 0 || sentences.length === 0 || currentIndex >= sentences.length) {
-                return; 
-            }
-            
-            isSpeaking = true;
-            pendingSentences--;
-            const textToRead = sentences[currentIndex];
-            
-            // 1. 渲染视觉文本 (只刷新在一个位置，无过渡动画)
-            renderRandomText(textToRead);
-
-            // 2. 调用 TTS
-            const selectedVoiceIndex = voiceSelect.value;
-            if (selectedVoiceIndex === 'gemini') {
-                // 如果用户强行选了 Gemini 占位符，给出提示并跳过真实发音
-                console.log("调用 Gemini TTS API (此处需要后端对接，前端仅模拟时间)");
-                setTimeout(() => { finishSentence(); }, textToRead.length * 200); 
+                text = await extractEpubText(file);
+            } else {
+                alert("仅支持 txt 和 epub 格式！");
                 return;
             }
 
-            const utterance = new SpeechSynthesisUtterance(textToRead);
-            utterance.voice = voices[selectedVoiceIndex];
-            utterance.rate = parseFloat(speedInput.value);
-            utterance.volume = parseFloat(volumeSlider.value);
+            // 清理空格并按标点切分句子
+            text = text.replace(/\s+/g, ' ');
+            sentences = text.match(/[^。！？.!?]+[。！？.!?]*/g) || [];
+            if(sentences.length === 0) sentences = [text]; // 若无标点容错
             
-            utterance.onend = () => {
-                finishSentence();
-            };
-            
-            utterance.onerror = (e) => {
-                console.warn("TTS 播放出错:", e);
-                finishSentence();
-            };
+            currentIndex = 0;
+            updateProgressUI(true);
+            alert(`书籍加载成功！共 ${sentences.length} 句。`);
+        });
 
-            speechSynthesis.speak(utterance);
+        async function extractEpubText(file) {
+            const zip = await JSZip.loadAsync(file);
+            let fullText = "";
+            try {
+                // 读取 container.xml 寻找 opf
+                const containerXml = await zip.file("META-INF/container.xml").async("string");
+                const opfPathMatch = containerXml.match(/full-path="([^"]+)"/);
+                if (!opfPathMatch) throw new Error("无效的 EPUB 结构");
+                
+                const opfPath = opfPathMatch[1];
+                const basePath = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
+                const opfXml = await zip.file(opfPath).async("string");
+
+                // 提取 manifest
+                const manifestRegex = /<item [^>]*id="([^"]+)"[^>]*href="([^"]+)"/gi;
+                let manifest = {};
+                let match;
+                while ((match = manifestRegex.exec(opfXml)) !== null) {
+                    manifest[match[1]] = match[2];
+                }
+
+                // 提取 spine 并按顺序读取文件
+                const spineRegex = /<itemref [^>]*idref="([^"]+)"/gi;
+                while ((match = spineRegex.exec(opfXml)) !== null) {
+                    const id = match[1];
+                    if (manifest[id]) {
+                        const filePath = basePath + manifest[id];
+                        const fileData = zip.file(decodeURIComponent(filePath)) || zip.file(filePath);
+                        if(fileData) {
+                             let html = await fileData.async("string");
+                             // 粗暴但有效的去标签逻辑
+                             html = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                                        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                                        .replace(/<[^>]+>/g, '');
+                             fullText += html;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("EPUB 解析出错，尝试回退解析所有 HTML:", err);
+                // 失败回退逻辑：直接读取所有 html/xhtml 文件
+                for (let filename of Object.keys(zip.files)) {
+                    if (filename.endsWith('.html') || filename.endsWith('.xhtml')) {
+                        let html = await zip.file(filename).async("string");
+                        fullText += html.replace(/<[^>]+>/g, '');
+                    }
+                }
+            }
+            return fullText;
         }
 
-        function finishSentence() {
-            displayDiv.innerHTML = ''; // 念完后消失
-            currentIndex++;
-            updateProgressUI();
-            isSpeaking = false;
-            // 递归检查是否还有积累的句子要读
-            setTimeout(attemptRead, 200); 
-        }
-
-        function renderRandomText(text) {
-            displayDiv.innerHTML = '';
+        // --- 进度条控制与动画 ---
+        ui.mainProgress.addEventListener('input', (e) => {
+            if (sentences.length === 0) return;
+            const targetPercent = parseFloat(e.target.value);
+            currentIndex = Math.floor((targetPercent / 100) * sentences.length);
+            // 确保不会越界
+            if(currentIndex >= sentences.length) currentIndex = sentences.length - 1;
             
-            // 随机横排或竖排
-            const isVertical = Math.random() > 0.5;
-            displayDiv.style.writingMode = isVertical ? 'vertical-rl' : 'horizontal-tb';
-
-            // 规定的字号范围
-            const minSize = parseInt(document.getElementById('min-size').value) || 20;
-            const maxSize = parseInt(document.getElementById('max-size').value) || 50;
-            
-            // 为每个字生成随机字体和颜色
-            for (let char of text) {
-                const span = document.createElement('span');
-                span.innerText = char;
-                // 随机明亮鲜艳的颜色
-                span.style.color = `hsl(${Math.random() * 360}, 100%, ${60 + Math.random() * 30}%)`;
-                // 随机字体
-                span.style.fontFamily = availableFonts[Math.floor(Math.random() * availableFonts.length)];
-                // 为了视觉整齐度，基础字号统一在一个随机大小，但你可以依需求改成每个字都不同大小。这里按照句子统一随机大小处理
-                displayDiv.appendChild(span);
+            // 如果正在朗读，强制打断
+            if(isSpeaking) {
+                window.speechSynthesis.cancel();
+                isSpeaking = false;
+                ui.sentenceContainer.style.display = 'none';
             }
             
-            displayDiv.style.fontSize = Math.floor(Math.random() * (maxSize - minSize + 1)) + minSize + 'px';
+            updateProgressUI(false); // 拖动时不需要过度动画，即时反馈
+        });
 
-            // 确保文本不会超出屏幕边界
-            displayDiv.style.visibility = 'hidden';
-            
-            // 使用 setTimeout 确保 DOM 渲染完成拿到宽高
-            setTimeout(() => {
-                const rect = displayDiv.getBoundingClientRect();
-                const panelHeight = document.getElementById('settings-panel').classList.contains('hidden') ? 0 : document.getElementById('settings-panel').offsetHeight;
-                
-                const maxX = Math.max(0, window.innerWidth - rect.width - 20);
-                const maxY = Math.max(0, window.innerHeight - rect.height - panelHeight - 20);
-                
-                displayDiv.style.left = Math.floor(Math.random() * maxX) + 'px';
-                displayDiv.style.top = Math.floor(Math.random() * maxY) + 'px';
-                
-                displayDiv.style.visibility = 'visible';
-            }, 0);
-        }
-
-        // --- 进度与动画管理 ---
-        function updateProgressUI() {
+        function updateProgressUI(animate = true) {
             if (sentences.length === 0) return;
-            const targetPercent = (currentIndex / (sentences.length - 1)) * 100;
+            let targetPercent = (currentIndex / sentences.length) * 100;
+            ui.mainProgress.value = targetPercent;
+            ui.thinProgressFill.style.width = `${targetPercent}%`;
             
-            // 更新滑动条
-            mainProgressSlider.value = (currentIndex / (sentences.length - 1)) * 1000;
-            
-            // 更新极简进度条
-            updateMiniProgress();
-
-            // 触发百分比数字上涨动画
-            animatePercentage(targetPercent);
+            if (animate) {
+                animateNumber(targetPercent);
+            } else {
+                displayPercent = targetPercent;
+                ui.progressPercent.innerText = targetPercent.toFixed(2);
+            }
         }
 
-        function updateMiniProgress() {
-            if (sentences.length === 0) return;
-            const percent = (currentIndex / (sentences.length - 1)) * 100;
-            miniProgressBar.style.width = percent + '%';
-        }
+        function animateNumber(target) {
+            let start = displayPercent;
+            let diff = target - start;
+            let startTime = performance.now();
+            let duration = 500; // 500ms 动画
 
-        function animatePercentage(target) {
-            const duration = 500; // 动画时长 500ms
-            const start = currentDisplayedPercent;
-            const change = target - start;
-            let startTime = null;
-
-            function step(timestamp) {
-                if (!startTime) startTime = timestamp;
-                const progress = timestamp - startTime;
-                const ratio = Math.min(progress / duration, 1);
-                
-                // 缓动算法 easeOut
-                const easeOut = ratio * (2 - ratio);
-                currentDisplayedPercent = start + change * easeOut;
-                
-                percentDisplayEl.innerText = currentDisplayedPercent.toFixed(2);
-
-                if (progress < duration) {
+            function step(time) {
+                let elapsed = time - startTime;
+                let progress = Math.min(elapsed / duration, 1);
+                displayPercent = start + (diff * progress);
+                ui.progressPercent.innerText = displayPercent.toFixed(2);
+                if (progress < 1) {
                     requestAnimationFrame(step);
-                } else {
-                    currentDisplayedPercent = target;
-                    percentDisplayEl.innerText = target.toFixed(2);
                 }
             }
             requestAnimationFrame(step);
         }
 
-        // --- 计步器逻辑 ---
-        function addSteps(count) {
-            stepCount += count;
-            const newSentencesTriggered = Math.floor(stepCount / 100);
-            if (newSentencesTriggered > 0) {
-                pendingSentences += newSentencesTriggered;
-                stepCount = stepCount % 100;
-                attemptRead();
-            }
-            stepCountEl.innerText = stepCount;
-        }
-
-        function simulateSteps(count) {
-            if(sentences.length === 0) {
-                alert("请先上传书籍！");
-                return;
-            }
-            addSteps(count);
-        }
-
-        // 真实传感器计步算法 (基于加速度传感器)
-        let lastAccel = 0;
-        let isHigh = false;
-        const stepThreshold = 1.2; // 步数判定的阈值，根据手机灵敏度可微调
-
-        if (window.DeviceMotionEvent) {
-            window.addEventListener('devicemotion', (event) => {
-                if(sentences.length === 0) return; // 没加载书不计步
-                const acc = event.accelerationIncludingGravity;
-                if (!acc) return;
-                
-                // 计算三轴合加速度
-                const currentAccel = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
-                
-                // 简单的波峰波谷判定算法
-                if (currentAccel > 9.8 + stepThreshold && !isHigh) {
-                    isHigh = true;
-                } else if (currentAccel < 9.8 - stepThreshold && isHigh) {
-                    isHigh = false;
-                    addSteps(1); // 判定为走了一步
+        // --- 计步核心逻辑 ---
+        ui.startBtn.addEventListener('click', async () => {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceMotionEvent.requestPermission();
+                    if (permission === 'granted') {
+                        startPedometer();
+                    } else {
+                        alert('需要传感器权限才能计步！');
+                    }
+                } catch (e) {
+                    alert('获取权限失败: ' + e);
                 }
-                lastAccel = currentAccel;
+            } else {
+                startPedometer();
+            }
+            // 顺便唤醒一下 TTS，绕过浏览器限制
+            let silentMsg = new SpeechSynthesisUtterance('');
+            silentMsg.volume = 0;
+            window.speechSynthesis.speak(silentMsg);
+            ui.startBtn.innerText = "计步运行中...";
+            ui.startBtn.style.background = "#2E7D32";
+        });
+
+        ui.simBtn.addEventListener('click', () => {
+            steps += 100;
+            ui.stepCount.innerText = steps;
+            pendingSentences++;
+            ui.queueCount.innerText = pendingSentences;
+            processQueue();
+        });
+
+        function startPedometer() {
+            window.addEventListener('devicemotion', (e) => {
+                let acc = e.accelerationIncludingGravity;
+                if (!acc) return;
+                // 计算重力加速度向量的模
+                let magnitude = Math.sqrt(acc.x*acc.x + acc.y*acc.y + acc.z*acc.z);
+                let delta = Math.abs(magnitude - lastAccel);
+                
+                // 阈值设定，过滤微小抖动
+                if (delta > 1.2) {
+                    let now = Date.now();
+                    if (now - lastStepTime > 300) { // 限制步频上限
+                        steps++;
+                        ui.stepCount.innerText = steps;
+                        lastStepTime = now;
+                        
+                        if (steps % 100 === 0) {
+                            pendingSentences++;
+                            ui.queueCount.innerText = pendingSentences;
+                            processQueue();
+                        }
+                    }
+                }
+                lastAccel = magnitude;
             });
         }
 
-        // --- UI 交互 ---
-        function togglePanel() {
-            const panel = document.getElementById('settings-panel');
-            const btn = document.getElementById('toggle-panel-btn');
-            panel.classList.toggle('hidden');
-            if (panel.classList.contains('hidden')) {
-                btn.innerText = '显示设置 ▲';
-            } else {
-                btn.innerText = '隐藏设置 ▼';
+        // --- 朗读与视觉渲染 ---
+        function processQueue() {
+            if (isSpeaking || pendingSentences <= 0 || sentences.length === 0 || currentIndex >= sentences.length) {
+                return;
             }
+            
+            let sentence = sentences[currentIndex];
+            renderRandomSentence(sentence);
+            speakSentence(sentence);
         }
-        
-        // 初始加载语音列表
-        populateVoiceList();
+
+        function renderRandomSentence(text) {
+            const minS = parseInt(ui.minFont.value) || 16;
+            const maxS = parseInt(ui.maxFont.value) || 48;
+            
+            let html = '';
+            for(let char of text) {
+                let color = `rgb(${Math.floor(Math.random()*155+100)}, ${Math.floor(Math.random()*155+100)}, ${Math.floor(Math.random()*155+100)})`; // 偏亮色适配暗背景
+                let font = fontFamilies[Math.floor(Math.random() * fontFamilies.length)];
+                let size = Math.floor(Math.random() * (maxS - minS + 1)) + minS;
+                html += `<span style="color:${color}; font-family:'${font}'; font-size:${size}px;">${char}</span>`;
+            }
+            
+            ui.sentenceContainer.innerHTML = html;
+            
+            // 随机横竖版
+            const isVertical = Math.random() > 0.5;
+            ui.sentenceContainer.style.writingMode = isVertical ? 'vertical-rl' : 'horizontal-tb';
+            
+            // 先显示出来，为了获取真实宽高来计算安全边界
+            ui.sentenceContainer.style.display = 'block';
+            
+            const rect = ui.sentenceContainer.getBoundingClientRect();
+            const maxX = window.innerWidth - rect.width;
+            const maxY = window.innerHeight - rect.height;
+            
+            // 防溢出随机坐标
+            const x = Math.max(0, Math.floor(Math.random() * maxX));
+            const y = Math.max(0, Math.floor(Math.random() * maxY));
+            
+            ui.sentenceContainer.style.left = `${x}px`;
+            ui.sentenceContainer.style.top = `${y}px`;
+        }
+
+        function speakSentence(text) {
+            isSpeaking = true;
+            window.speechSynthesis.cancel(); // 清理残留队列
+            
+            currentUtterance = new SpeechSynthesisUtterance(text);
+            currentUtterance.rate = parseFloat(ui.rateInput.value) || 1.0;
+            currentUtterance.volume = parseFloat(ui.volumeInput.value) || 1.0;
+            
+            currentUtterance.onend = () => {
+                isSpeaking = false;
+                ui.sentenceContainer.style.display = 'none'; // 句子念完隐藏
+                currentIndex++;
+                pendingSentences--;
+                ui.queueCount.innerText = pendingSentences;
+                
+                updateProgressUI(true); // 更新进度和动画
+                
+                // 处理下一句
+                processQueue();
+            };
+
+            currentUtterance.onerror = (e) => {
+                console.error("TTS 错误:", e);
+                isSpeaking = false;
+                ui.sentenceContainer.style.display = 'none';
+            };
+
+            window.speechSynthesis.speak(currentUtterance);
+        }
     </script>
 </body>
 </html>
