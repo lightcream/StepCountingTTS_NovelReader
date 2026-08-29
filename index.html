@@ -2,173 +2,450 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>网页手机步数计数器</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>步数轻小说奖励阅读器</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f4f7f6;
-            color: #333;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
+        * { box-sizing: border-box; }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #121212; color: #fff; overflow: hidden;
+            font-family: sans-serif;
         }
-        .container {
-            background: #ffffff;
-            padding: 30px;
-            border-radius: 16px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            text-align: center;
-            max-width: 400px;
-            width: 100%;
+        
+        /* 核心文本显示区 */
+        #sentence-display {
+            position: absolute;
+            /* 禁用任何过度动画，满足每次直接刷新的要求 */
+            transition: none;
+            cursor: default;
+            user-select: none;
         }
-        h1 {
-            font-size: 24px;
-            margin-bottom: 20px;
-            color: #2c3e50;
+
+        /* 隐藏面板时的底部极简进度条 */
+        #mini-progress-bar-container {
+            position: fixed; bottom: 0; left: 0; width: 100%; height: 6px;
+            background: #333; z-index: 99; cursor: pointer;
         }
-        .counter-box {
-            font-size: 64px;
-            font-weight: bold;
-            color: #3498db;
-            margin: 20px 0;
+        #mini-progress-bar {
+            height: 100%; width: 0%; background: #00e5ff;
+            transition: width 0.3s ease;
         }
-        .label {
-            font-size: 16px;
-            color: #7f8c8d;
-            margin-bottom: 30px;
+        
+        /* 设置面板 */
+        #settings-panel {
+            position: fixed; bottom: 0; left: 0; width: 100%;
+            background: rgba(30, 30, 30, 0.95);
+            padding: 15px 20px 25px 20px;
+            border-top: 1px solid #444;
+            transform: translateY(0);
+            transition: transform 0.3s ease-in-out;
+            z-index: 100;
+            display: flex; flex-direction: column; gap: 10px;
+            backdrop-filter: blur(10px);
         }
-        .btn-group {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
+        #settings-panel.hidden {
+            transform: translateY(100%);
         }
-        button {
-            padding: 12px 20px;
-            font-size: 16px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: background 0.2s;
+
+        /* 控件样式 */
+        .control-row {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
         }
-        #startBtn {
-            background-color: #2ecc71;
-            color: white;
+        .control-group {
+            display: flex; align-items: center; gap: 5px; font-size: 14px;
         }
-        #startBtn:hover {
-            background-color: #27ae60;
+        input[type="range"] { flex-grow: 1; }
+        input[type="number"] { width: 60px; background: #333; color: white; border: 1px solid #555; border-radius: 4px; padding: 2px 5px;}
+        select, button, input[type="file"] {
+            background: #333; color: #fff; border: 1px solid #555; border-radius: 5px; padding: 5px 10px; font-size: 14px;
         }
-        #resetBtn {
-            background-color: #e74c3c;
-            color: white;
+        button:hover, select:hover { background: #444; cursor: pointer; }
+        
+        #toggle-panel-btn {
+            position: absolute; top: -35px; right: 10px;
+            background: rgba(30, 30, 30, 0.9); border: 1px solid #444; border-bottom: none;
+            border-radius: 8px 8px 0 0; padding: 5px 15px; color: white; cursor: pointer;
         }
-        #resetBtn:hover {
-            background-color: #c0392b;
+
+        /* 状态展示 */
+        .status-display {
+            display: flex; justify-content: space-between; font-weight: bold; color: #00e5ff;
+            font-size: 16px; margin-bottom: 5px;
         }
-        .status {
-            margin-top: 15px;
-            font-size: 14px;
-            color: #95a5a6;
-        }
+        .main-progress-container { width: 100%; display: flex; align-items: center; gap: 10px; }
+        #main-progress-slider { flex-grow: 1; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>📱 网页步数计数器</h1>
-    <div class="counter-box" id="stepCount">0</div>
-    <div class="label">当前实时步数</div>
-    
-    <div class="btn-group">
-        <button id="startBtn" onclick="toggleTracking()">开始统计</button>
-        <button id="resetBtn" onclick="resetSteps()">重置</button>
+    <div id="sentence-display"></div>
+
+    <div id="mini-progress-bar-container" onclick="togglePanel()">
+        <div id="mini-progress-bar"></div>
     </div>
-    
-    <div class="status" id="status">点击“开始统计”并允许获取传感器权限</div>
-</div>
 
-<script>
-    let steps = 0;
-    let isTracking = false;
-    let lastMagnitude = 0;
-    let lastTime = 0;
-    
-    // 计步核心参数：阈值与防抖时间
-    const THRESHOLD = 1.2; 
-    const MIN_TIME_DIFF = 250; 
+    <div id="settings-panel">
+        <button id="toggle-panel-btn" onclick="togglePanel()">隐藏设置 ▼</button>
+        
+        <div class="status-display">
+            <span>当前步数: <span id="step-count">0</span>/100 (每满100步读一句)</span>
+            <span>进度: <span id="percent-display">0.00</span>%</span>
+        </div>
 
-    function updateDisplay() {
-        document.getElementById('stepCount').innerText = steps;
-    }
+        <div class="main-progress-container">
+            <input type="range" id="main-progress-slider" min="0" max="1000" value="0" title="拖动调整阅读进度">
+        </div>
 
-    function toggleTracking() {
-        if (!isTracking) {
-            // 兼容 iOS 13+ 设备的传感器权限请求
-            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-                DeviceMotionEvent.requestPermission()
-                    .then(response => {
-                        if (response === 'granted') {
-                            startMotionListener();
-                        } else {
-                            document.getElementById('status').innerText = '权限被拒绝，无法获取运动数据';
-                        }
-                    })
-                    .catch(console.error);
+        <div class="control-row">
+            <div class="control-group">
+                <label>书籍:</label>
+                <input type="file" id="book-upload" accept=".txt,.epub">
+            </div>
+            <div class="control-group">
+                <label>发音人:</label>
+                <select id="voice-select"></select>
+            </div>
+            <button onclick="simulateSteps(100)">测试: +100步</button>
+        </div>
+
+        <div class="control-row">
+            <div class="control-group">
+                <label>语速:</label>
+                <input type="range" id="speed-slider" min="0.5" max="2.0" step="0.1" value="1.0">
+                <input type="number" id="speed-input" min="0.5" max="2.0" step="0.1" value="1.0">
+            </div>
+            <div class="control-group">
+                <label>音量:</label>
+                <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="1">
+            </div>
+            <div class="control-group">
+                <label>字号范围:</label>
+                <input type="number" id="min-size" value="24" placeholder="最小"> - 
+                <input type="number" id="max-size" value="72" placeholder="最大">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 状态与数据管理 ---
+        let sentences = [];
+        let currentIndex = 0;
+        let stepCount = 0;
+        let pendingSentences = 0;
+        let isSpeaking = false;
+        let currentDisplayedPercent = 0;
+        const availableFonts = ['Arial', 'Microsoft YaHei', 'SimHei', 'KaiTi', 'FangSong', 'SimSun', 'Verdana', 'Courier New'];
+
+        // DOM 元素
+        const displayDiv = document.getElementById('sentence-display');
+        const stepCountEl = document.getElementById('step-count');
+        const percentDisplayEl = document.getElementById('percent-display');
+        const miniProgressBar = document.getElementById('mini-progress-bar');
+        const mainProgressSlider = document.getElementById('main-progress-slider');
+        const speedSlider = document.getElementById('speed-slider');
+        const speedInput = document.getElementById('speed-input');
+        const volumeSlider = document.getElementById('volume-slider');
+        const voiceSelect = document.getElementById('voice-select');
+
+        // --- 初始化与事件监听 ---
+        document.getElementById('book-upload').addEventListener('change', handleFileUpload);
+        
+        // 语速同步 (滑块与键盘输入)
+        speedSlider.addEventListener('input', (e) => speedInput.value = e.target.value);
+        speedInput.addEventListener('input', (e) => speedSlider.value = e.target.value);
+        
+        // 进度条拖拽事件 (确保不影响当前正在播放的句子，仅改变索引)
+        mainProgressSlider.addEventListener('input', (e) => {
+            if(sentences.length === 0) return;
+            const ratio = e.target.value / 1000;
+            currentIndex = Math.floor(ratio * (sentences.length - 1));
+            animatePercentage(ratio * 100);
+            updateMiniProgress();
+        });
+
+        // TTS 语音列表加载
+        let voices = [];
+        function populateVoiceList() {
+            voices = speechSynthesis.getVoices();
+            voiceSelect.innerHTML = '';
+            let xiaoxiaoSelected = false;
+
+            // 添加一个模拟的 Gemini 选项（仅作展示，纯前端无法直接调用）
+            const geminiOption = document.createElement('option');
+            geminiOption.textContent = 'Gemini TTS (需后端API支持)';
+            geminiOption.value = 'gemini';
+            voiceSelect.appendChild(geminiOption);
+
+            voices.forEach((voice, i) => {
+                const option = document.createElement('option');
+                option.textContent = `${voice.name} (${voice.lang})`;
+                option.value = i;
+                // 默认选中 Edge 的 Xiaoxiao
+                if (voice.name.includes('Xiaoxiao')) {
+                    option.selected = true;
+                    xiaoxiaoSelected = true;
+                }
+                voiceSelect.appendChild(option);
+            });
+            
+            // 如果没找到 Xiaoxiao，默认选第一个中文
+            if (!xiaoxiaoSelected) {
+                const firstZh = voices.findIndex(v => v.lang.includes('zh'));
+                if (firstZh !== -1) voiceSelect.value = firstZh;
+            }
+        }
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = populateVoiceList;
+        }
+
+        // --- 文件解析逻辑 ---
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (file.name.endsWith('.txt')) {
+                const reader = new FileReader();
+                reader.onload = (evt) => processText(evt.target.result);
+                reader.readAsText(file);
+            } else if (file.name.endsWith('.epub')) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    const book = ePub(evt.target.result);
+                    parseEpub(book);
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        }
+
+        async function parseEpub(book) {
+            sentences = [];
+            try {
+                await book.ready;
+                const spine = book.spine;
+                let fullText = "";
+                // 遍历EPUB章节提取纯文本
+                for (let i = 0; i < spine.length; i++) {
+                    const item = spine.get(i);
+                    const doc = await book.load(item.href);
+                    fullText += doc.body.textContent + " ";
+                }
+                processText(fullText);
+            } catch (err) {
+                alert("EPUB 解析失败，请尝试 TXT 格式。");
+            }
+        }
+
+        function processText(text) {
+            // 使用正则匹配完整的句子，保留标点符号
+            sentences = text.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [];
+            // 过滤纯空白句
+            sentences = sentences.map(s => s.trim()).filter(s => s.length > 0);
+            currentIndex = 0;
+            currentDisplayedPercent = 0;
+            updateProgressUI();
+            alert(`书籍加载成功！共 ${sentences.length} 句话。开始走路（或点击测试按钮）开始阅读吧！`);
+        }
+
+        // --- 核心阅读逻辑 (TTS 与 视觉呈现) ---
+        function attemptRead() {
+            if (isSpeaking || pendingSentences <= 0 || sentences.length === 0 || currentIndex >= sentences.length) {
+                return; 
+            }
+            
+            isSpeaking = true;
+            pendingSentences--;
+            const textToRead = sentences[currentIndex];
+            
+            // 1. 渲染视觉文本 (只刷新在一个位置，无过渡动画)
+            renderRandomText(textToRead);
+
+            // 2. 调用 TTS
+            const selectedVoiceIndex = voiceSelect.value;
+            if (selectedVoiceIndex === 'gemini') {
+                // 如果用户强行选了 Gemini 占位符，给出提示并跳过真实发音
+                console.log("调用 Gemini TTS API (此处需要后端对接，前端仅模拟时间)");
+                setTimeout(() => { finishSentence(); }, textToRead.length * 200); 
+                return;
+            }
+
+            const utterance = new SpeechSynthesisUtterance(textToRead);
+            utterance.voice = voices[selectedVoiceIndex];
+            utterance.rate = parseFloat(speedInput.value);
+            utterance.volume = parseFloat(volumeSlider.value);
+            
+            utterance.onend = () => {
+                finishSentence();
+            };
+            
+            utterance.onerror = (e) => {
+                console.warn("TTS 播放出错:", e);
+                finishSentence();
+            };
+
+            speechSynthesis.speak(utterance);
+        }
+
+        function finishSentence() {
+            displayDiv.innerHTML = ''; // 念完后消失
+            currentIndex++;
+            updateProgressUI();
+            isSpeaking = false;
+            // 递归检查是否还有积累的句子要读
+            setTimeout(attemptRead, 200); 
+        }
+
+        function renderRandomText(text) {
+            displayDiv.innerHTML = '';
+            
+            // 随机横排或竖排
+            const isVertical = Math.random() > 0.5;
+            displayDiv.style.writingMode = isVertical ? 'vertical-rl' : 'horizontal-tb';
+
+            // 规定的字号范围
+            const minSize = parseInt(document.getElementById('min-size').value) || 20;
+            const maxSize = parseInt(document.getElementById('max-size').value) || 50;
+            
+            // 为每个字生成随机字体和颜色
+            for (let char of text) {
+                const span = document.createElement('span');
+                span.innerText = char;
+                // 随机明亮鲜艳的颜色
+                span.style.color = `hsl(${Math.random() * 360}, 100%, ${60 + Math.random() * 30}%)`;
+                // 随机字体
+                span.style.fontFamily = availableFonts[Math.floor(Math.random() * availableFonts.length)];
+                // 为了视觉整齐度，基础字号统一在一个随机大小，但你可以依需求改成每个字都不同大小。这里按照句子统一随机大小处理
+                displayDiv.appendChild(span);
+            }
+            
+            displayDiv.style.fontSize = Math.floor(Math.random() * (maxSize - minSize + 1)) + minSize + 'px';
+
+            // 确保文本不会超出屏幕边界
+            displayDiv.style.visibility = 'hidden';
+            
+            // 使用 setTimeout 确保 DOM 渲染完成拿到宽高
+            setTimeout(() => {
+                const rect = displayDiv.getBoundingClientRect();
+                const panelHeight = document.getElementById('settings-panel').classList.contains('hidden') ? 0 : document.getElementById('settings-panel').offsetHeight;
+                
+                const maxX = Math.max(0, window.innerWidth - rect.width - 20);
+                const maxY = Math.max(0, window.innerHeight - rect.height - panelHeight - 20);
+                
+                displayDiv.style.left = Math.floor(Math.random() * maxX) + 'px';
+                displayDiv.style.top = Math.floor(Math.random() * maxY) + 'px';
+                
+                displayDiv.style.visibility = 'visible';
+            }, 0);
+        }
+
+        // --- 进度与动画管理 ---
+        function updateProgressUI() {
+            if (sentences.length === 0) return;
+            const targetPercent = (currentIndex / (sentences.length - 1)) * 100;
+            
+            // 更新滑动条
+            mainProgressSlider.value = (currentIndex / (sentences.length - 1)) * 1000;
+            
+            // 更新极简进度条
+            updateMiniProgress();
+
+            // 触发百分比数字上涨动画
+            animatePercentage(targetPercent);
+        }
+
+        function updateMiniProgress() {
+            if (sentences.length === 0) return;
+            const percent = (currentIndex / (sentences.length - 1)) * 100;
+            miniProgressBar.style.width = percent + '%';
+        }
+
+        function animatePercentage(target) {
+            const duration = 500; // 动画时长 500ms
+            const start = currentDisplayedPercent;
+            const change = target - start;
+            let startTime = null;
+
+            function step(timestamp) {
+                if (!startTime) startTime = timestamp;
+                const progress = timestamp - startTime;
+                const ratio = Math.min(progress / duration, 1);
+                
+                // 缓动算法 easeOut
+                const easeOut = ratio * (2 - ratio);
+                currentDisplayedPercent = start + change * easeOut;
+                
+                percentDisplayEl.innerText = currentDisplayedPercent.toFixed(2);
+
+                if (progress < duration) {
+                    requestAnimationFrame(step);
+                } else {
+                    currentDisplayedPercent = target;
+                    percentDisplayEl.innerText = target.toFixed(2);
+                }
+            }
+            requestAnimationFrame(step);
+        }
+
+        // --- 计步器逻辑 ---
+        function addSteps(count) {
+            stepCount += count;
+            const newSentencesTriggered = Math.floor(stepCount / 100);
+            if (newSentencesTriggered > 0) {
+                pendingSentences += newSentencesTriggered;
+                stepCount = stepCount % 100;
+                attemptRead();
+            }
+            stepCountEl.innerText = stepCount;
+        }
+
+        function simulateSteps(count) {
+            if(sentences.length === 0) {
+                alert("请先上传书籍！");
+                return;
+            }
+            addSteps(count);
+        }
+
+        // 真实传感器计步算法 (基于加速度传感器)
+        let lastAccel = 0;
+        let isHigh = false;
+        const stepThreshold = 1.2; // 步数判定的阈值，根据手机灵敏度可微调
+
+        if (window.DeviceMotionEvent) {
+            window.addEventListener('devicemotion', (event) => {
+                if(sentences.length === 0) return; // 没加载书不计步
+                const acc = event.accelerationIncludingGravity;
+                if (!acc) return;
+                
+                // 计算三轴合加速度
+                const currentAccel = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
+                
+                // 简单的波峰波谷判定算法
+                if (currentAccel > 9.8 + stepThreshold && !isHigh) {
+                    isHigh = true;
+                } else if (currentAccel < 9.8 - stepThreshold && isHigh) {
+                    isHigh = false;
+                    addSteps(1); // 判定为走了一步
+                }
+                lastAccel = currentAccel;
+            });
+        }
+
+        // --- UI 交互 ---
+        function togglePanel() {
+            const panel = document.getElementById('settings-panel');
+            const btn = document.getElementById('toggle-panel-btn');
+            panel.classList.toggle('hidden');
+            if (panel.classList.contains('hidden')) {
+                btn.innerText = '显示设置 ▲';
             } else {
-                // 安卓及其他标准浏览器
-                startMotionListener();
-            }
-        } else {
-            stopMotionListener();
-        }
-    }
-
-    function startMotionListener() {
-        window.addEventListener('devicemotion', handleMotion, true);
-        isTracking = true;
-        document.getElementById('startBtn').innerText = '停止统计';
-        document.getElementById('startBtn').style.backgroundColor = '#e67e22';
-        document.getElementById('status').innerText = '正在实时检测步伐...';
-    }
-
-    function stopMotionListener() {
-        window.removeEventListener('devicemotion', handleMotion, true);
-        isTracking = false;
-        document.getElementById('startBtn').innerText = '开始统计';
-        document.getElementById('startBtn').style.backgroundColor = '#2ecc71';
-        document.getElementById('status').innerText = '已暂停';
-    }
-
-    function handleMotion(event) {
-        const acc = event.accelerationIncludingGravity;
-        if (!acc) return;
-
-        // 计算三轴合加速度
-        const magnitude = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
-        const currentTime = new Date().getTime();
-
-        // 简易峰值与防抖判断
-        if (Math.abs(magnitude - lastMagnitude) > THRESHOLD) {
-            if (currentTime - lastTime > MIN_TIME_DIFF) {
-                steps++;
-                updateDisplay();
-                lastTime = currentTime;
+                btn.innerText = '隐藏设置 ▼';
             }
         }
-        lastMagnitude = magnitude;
-    }
-
-    function resetSteps() {
-        steps = 0;
-        updateDisplay();
-        document.getElementById('status').innerText = '步数已清零';
-    }
-</script>
-
+        
+        // 初始加载语音列表
+        populateVoiceList();
+    </script>
 </body>
 </html>
