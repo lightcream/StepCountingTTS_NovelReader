@@ -153,10 +153,12 @@
         <div id="sentence-container"></div>
     </div>
 
+    <!-- 底部细线进度条 -->
     <div id="thin-progress-bar">
         <div id="thin-progress-fill"></div>
     </div>
 
+    <!-- 设置面板 -->
     <div id="settings-panel">
         <button id="toggle-panel-btn">隐藏面板</button>
         
@@ -192,7 +194,7 @@
         </div>
 
         <button class="btn" id="start-btn">申请传感器权限并启动</button>
-        <button class="btn" id="sim-btn" style="background:#555;">(测试) 模拟走100步</button>
+        <button class="btn" id="sim-btn" style="background:#555;">(测试) 模拟走20步</button>
     </div>
 
     <script>
@@ -399,7 +401,7 @@
         });
 
         ui.simBtn.addEventListener('click', () => {
-            steps += 100;
+            steps += 20; // 模拟一次增加20步
             ui.stepCount.innerText = steps;
             pendingSentences++;
             ui.queueCount.innerText = pendingSentences;
@@ -422,7 +424,8 @@
                         ui.stepCount.innerText = steps;
                         lastStepTime = now;
                         
-                        if (steps % 100 === 0) {
+                        // 修改为每走20步触发一次
+                        if (steps % 20 === 0) {
                             pendingSentences++;
                             ui.queueCount.innerText = pendingSentences;
                             processQueue();
