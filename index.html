@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>户外实时 GPS 运动追踪器</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f0f4f8;
+            color: #333;
+            text-align: center;
+            padding: 15px;
+            margin: 0;
+        }
+        .container {
+            max-width: 400px;
+            margin: 20px auto;
+            background: #fff;
+            padding: 25px;
+            border-radius: 16px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        }
+        h1 { font-size: 20px; margin-bottom: 15px; color: #1e3a8a; }
+        .main-display {
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8fafc;
+            border-radius: 12px;
+        }
+        .stat-value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #2563eb;
+            margin: 5px 0;
+        }
+        .stat-label { font-size: 14px; color: #64748b; }
+        .grid-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .grid-item {
+            background: #f8fafc;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .grid-item div:first-child { font-size: 12px; color: #64748b; }
+        .grid-item div:last-child { font-size: 16px; font-weight: bold; color: #334155; margin-top: 4px; }
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        button {
+            flex: 1;
+            padding: 12px;
+            font-size: 15px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            color: white;
+            font-weight: bold;
+            transition: opacity 0.2s;
+        }
+        button:active { opacity: 0.8; }
+        #startBtn { background-color: #16a34a; }
+        #stopBtn { background-color: #dc2626; }
+        #resetBtn { background-color: #475569; margin-top: 10px; width: 100%; }
+        .status { font-size: 13px; color: #d97706; margin-top: 12px; min-height: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>户外 GPS 运动追踪器</h1>
+        
+        <div class="main-display">
+            <div class="stat-label">总移动距离</div>
+            <div class="stat-value" id="distance">0.00 米</div>
+        </div>
+
+        <div class="grid-stats">
+            <div class="grid-item">
+                <div>当前速度</div>
+                <div id="speed">0.0 km/h</div>
+            </div>
+            <div class="grid-item">
+                <div>当前海拔</div>
+                <div id="altitude">-- 米</div>
+            </div>
+            <div class="grid-item">
+                <div>定位精度</div>
+                <div id="accuracy">-- 米</div>
+            </div>
+            <div class="grid-item">
+                <div>移动方向</div>
+                <div id="heading">-- 度</div>
+            </div>
+        </div>
+
+        <div class="grid-stats" style="grid-template-columns: 1fr;">
+            <div class="grid-item">
+                <div>当前经纬度</div>
+                <div id="coords" style="font-size: 13px; font-weight: normal;">等待获取...</div>
+            </div>
+        </div>
+
+        <div class="btn-group">
+            <button id="startBtn">开始追踪</button>
+            <button id="stopBtn">暂停追踪</button>
+        </div>
+        <button id="resetBtn">重置数据</button>
+        <div class="status" id="statusText">状态：准备就绪（请在户外空旷处使用）</div>
+    </div>
+
+    <script>
+        let watchId = null;
+        let totalDistance = 0;
+        let lastPosition = null;
+
+        const distanceEl = document.getElementById('distance');
+        const speedEl = document.getElementById('speed');
+        const altitudeEl = document.getElementById('altitude');
+        const accuracyEl = document.getElementById('accuracy');
+        const headingEl = document.getElementById('heading');
+        const coordsEl = document.getElementById('coords');
+        const statusText = document.getElementById('statusText');
+        
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const resetBtn = document.getElementById('resetBtn');
+
+        // 计算两点之间的距离（Haversine 公式）
+        function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
+            const R = 6371000; // 地球半径（米）
+            const dLat = (lat2 - lat1) * (Math.PI / 180);
+            const dLon = (lon2 - lon1) * (Math.PI / 180);
+            const a = 
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        function updateUI(pos) {
+            const crd = pos.coords;
+            
+            // 经纬度
+            coordsEl.textContent = `${crd.latitude.toFixed(6)}, ${crd.longitude.toFixed(6)}`;
+            
+            // 精度
+            accuracyEl.textContent = crd.accuracy ? crd.accuracy.toFixed(1) + ' 米' : '未知';
+            
+            // 海拔
+            altitudeEl.textContent = (crd.altitude !== null && crd.altitude !== undefined) 
+                ? crd.altitude.toFixed(1) + ' 米' 
+                : '不支持/无数据';
+            
+            // 速度（GPS速度单位是米/秒，转换为公里/小时 km/h）
+            if (crd.speed !== null && crd.speed !== undefined && crd.speed >= 0) {
+                speedEl.textContent = (crd.speed * 3.6).toFixed(1) + ' km/h';
+            } else {
+                speedEl.textContent = '0.0 km/h';
+            }
+
+            // 方向
+            headingEl.textContent = (crd.heading !== null && crd.heading !== undefined && !isNaN(crd.heading)) 
+                ? crd.heading.toFixed(0) + '°' 
+                : '静止/未知';
+
+            // 计算移动距离（过滤掉精度太差的点，防止原地不动时 GPS 漂移导致距离虚高）
+            if (lastPosition && crd.accuracy < 30) {
+                const dist = getDistanceFromLatLonInMeters(
+                    lastPosition.latitude, lastPosition.longitude,
+                    crd.latitude, crd.longitude
+                );
+                // 过滤掉不合理的瞬时跳跃（单次更新大于 50 米通常是信号误差引起的跳跃）
+                if (dist > 1 && dist < 50) {
+                    totalDistance += dist;
+                }
+            }
+
+            if (crd.accuracy < 30) {
+                lastPosition = { latitude: crd.latitude, longitude: crd.longitude };
+            }
+
+            // 更新距离显示
+            if (totalDistance >= 1000) {
+                distanceEl.textContent = (totalDistance / 1000).toFixed(2) + ' 公里';
+            } else {
+                distanceEl.textContent = totalDistance.toFixed(1) + ' 米';
+            }
+        }
+
+        function handleError(error) {
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    statusText.textContent = "错误：用户拒绝了定位权限。";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    statusText.textContent = "错误：无法获取位置（请检查GPS信号）。";
+                    break;
+                case error.TIMEOUT:
+                    statusText.textContent = "错误：获取定位超时。";
+                    break;
+                default:
+                    statusText.textContent = "错误：发生未知错误。";
+                    break;
+            }
+        }
+
+        startBtn.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                statusText.textContent = "您的浏览器不支持地理定位。";
+                return;
+            }
+
+            statusText.textContent = "状态：正在连接 GPS 卫星...";
+            
+            const options = {
+                enableHighAccuracy: true, // 开启高精度模式（强制使用硬件GPS）
+                timeout: 10000,
+                maximumAge: 0
+            };
+
+            watchId = navigator.geolocation.watchPosition(updateUI, handleError, options);
+            statusText.textContent = "状态：GPS 追踪运行中...";
+        });
+
+        stopBtn.addEventListener('click', () => {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+                statusText.textContent = "状态：追踪已暂停";
+            }
+        });
+
+        resetBtn.addEventListener('click', () => {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+            totalDistance = 0;
+            lastPosition = null;
+            distanceEl.textContent = "0.00 米";
+            speedEl.textContent = "0.0 km/h";
+            altitudeEl.textContent = "-- 米";
+            accuracyEl.textContent = "-- 米";
+            headingEl.textContent = "-- 度";
+            coordsEl.textContent = "等待获取...";
+            statusText.textContent = "状态：数据已重置";
+        });
+    </script>
+</body>
+</html>
