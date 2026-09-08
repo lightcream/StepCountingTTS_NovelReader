@@ -1,838 +1,817 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#35393e">
-<title>步读 · 边走边读</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='30' fill='%2339c5bb'/><rect x='20' y='18' width='24' height='30' rx='3' fill='none' stroke='%23062a27' stroke-width='4'/><path d='M32 18v30' stroke='%23062a27' stroke-width='4'/></svg>">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>踏句 · 步频 TTS 阅读器</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;500;700&family=Noto+Serif+SC&family=ZCOOL+KuaiLe&family=ZCOOL+XiaoWei&family=Ma+Shan+Zheng&family=Long+Cang&family=Liu+Jian+Mao+Cao&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600&family=Ma+Shan+Zheng&family=ZCOOL+XiaoWei&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 :root{
-  --bg:#35393e;          /* 灰底 */
-  --mod:#2c2f34;         /* 暗黑模块 */
-  --ink:#e6e9ec; --ink2:#a4abb2; --ink3:#7b828a;
-  --green:#39c5bb; --green-hi:#4bd8ce; --green-ink:#062a27;
-  --sh-d:rgba(15,17,20,.55); --sh-l:rgba(255,255,255,.05);
+  --bg:#242728;          /* 灰色底色 */
+  --panel:#2a2d2e;       /* 暗黑模块色 */
+  --well:#1e2122;        /* 凹陷槽 */
+  --txt:#ced4d2;
+  --dim:#7b8482;
+  --green:#39c5bb;       /* 初音绿 */
+  --sd:rgba(0,0,0,.55);
+  --sl:rgba(255,255,255,.05);
 }
-*{margin:0;padding:0;box-sizing:border-box}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
 body{
-  background:var(--bg);color:var(--ink);overflow:hidden;
-  font-family:'Noto Sans SC',system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
-  -webkit-tap-highlight-color:transparent;user-select:none;
+  background:var(--bg);color:var(--txt);overflow:hidden;height:100dvh;
+  font-family:'Rajdhani','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;
+  user-select:none;-webkit-user-select:none;
 }
-input{user-select:text;-webkit-user-select:text;font-family:inherit}
-button{font-family:inherit}
+svg{display:block;width:100%;height:100%}
 
-/* ---------- 句子舞台 ---------- */
-#stage{position:fixed;inset:0;z-index:2;overflow:hidden;pointer-events:none}
-#emptyHint{position:fixed;top:44%;left:50%;transform:translate(-50%,-50%);
-  color:var(--ink3);font-size:13px;letter-spacing:.3em;white-space:nowrap;z-index:1}
-body.has-book #emptyHint{display:none}
+/* ============ 句子舞台 ============ */
+#stage{position:fixed;inset:0;z-index:1;overflow:hidden;pointer-events:none}
+.sent{
+  position:absolute;line-height:1.4;font-weight:600;white-space:normal;
+  animation:sentIn .55s cubic-bezier(.2,1.45,.32,1) both;
+}
+.sent.out{animation:sentOut .34s ease both}
+.sent .ch{display:inline-block;white-space:pre;text-shadow:0 2px 12px rgba(0,0,0,.75);animation:chIn .5s ease both}
+@keyframes sentIn{0%{opacity:0;transform:scale(.7);filter:blur(14px)}100%{opacity:1;transform:scale(1);filter:blur(0)}}
+@keyframes chIn{0%{opacity:0;transform:translateY(.35em)}100%{opacity:1;transform:none}}
+@keyframes sentOut{0%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.06);filter:blur(10px)}}
 
-.sentence{position:absolute;z-index:2;line-height:1.4;font-weight:500;letter-spacing:.02em;
-  opacity:0;transition:opacity .45s ease;text-shadow:0 2px 12px rgba(10,12,14,.45)}
-.sentence.on{opacity:1}
-.sentence.out{opacity:0;transition:opacity .3s ease}
-.ch{display:inline-block;transform:rotate(var(--r,0deg));
-  animation:chIn .55s cubic-bezier(.18,.9,.28,1.35) both}
-@keyframes chIn{
-  from{opacity:0;transform:translateY(.45em) scale(.1) rotate(var(--r,0deg))}
-  to{opacity:1;transform:translateY(0) scale(1) rotate(var(--r,0deg))}}
+/* ============ 顶部模块行 ============ */
+#hud{position:fixed;top:0;left:0;right:0;z-index:30;padding:12px 12px 0;
+  display:flex;gap:10px;flex-wrap:wrap;pointer-events:none}
+.mod{
+  pointer-events:auto;background:var(--panel);border-radius:16px;
+  box-shadow:7px 7px 14px var(--sd),-5px -5px 12px var(--sl);
+  padding:9px 14px 10px;min-height:86px;min-width:150px;
+  display:flex;flex-direction:column;justify-content:space-between;
+  flex:1 1 150px;
+}
+.mod .tag{font-size:10px;letter-spacing:.22em;color:var(--dim);font-weight:600;white-space:nowrap}
+.mod .row{display:flex;align-items:center;gap:10px;flex:1;margin-top:6px}
+.brand{flex:0 0 auto;min-width:130px}
+.logo{font-family:'Ma Shan Zheng',serif;font-size:27px;color:var(--green);line-height:1}
+.bookinfo,.statecol{display:flex;flex-direction:column;gap:2px;min-width:0}
+#bookName,#stateTxt{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:24vw}
+#bookMeta,#stateSub{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#stepNum{font-size:30px;font-weight:700;letter-spacing:.03em;min-width:56px;color:var(--txt);font-variant-numeric:tabular-nums}
 
-/* ---------- 顶部状态胶囊 ---------- */
-#statusPill{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:40;
-  display:flex;align-items:center;gap:10px;padding:8px 18px;border-radius:99px;
-  background:var(--mod);box-shadow:5px 6px 14px var(--sh-d),-4px -4px 10px var(--sh-l);
-  font-size:12px;color:var(--ink2);white-space:nowrap;max-width:94vw;overflow:hidden}
-#statusPill .dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex:none}
-#statusPill .brand{color:var(--ink);font-weight:700;letter-spacing:.14em}
-#statusPill .sep{width:1px;height:12px;background:rgba(255,255,255,.1);flex:none}
-#stCue{color:var(--green);overflow:hidden;text-overflow:ellipsis}
+/* ============ 拟态控件 ============ */
+.btn{
+  border:none;cursor:pointer;color:var(--dim);background:var(--panel);
+  border-radius:12px;padding:9px 13px;font:600 13px 'Rajdhani','Noto Sans SC',sans-serif;
+  box-shadow:5px 5px 10px var(--sd),-4px -4px 9px var(--sl);
+  transition:box-shadow .18s,color .18s,opacity .3s;
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;
+}
+.btn:hover{color:var(--txt)}
+.btn:active,.btn.on{box-shadow:inset 4px 4px 8px rgba(0,0,0,.5),inset -3px -3px 7px rgba(255,255,255,.04);color:var(--green)}
+.btn.sm{padding:7px 11px;font-size:12px;border-radius:10px}
+.btn.lockedout{opacity:.35;pointer-events:none}
+.btn.lockedout svg{width:12px;height:12px}
+.btn svg{width:14px;height:14px;flex:none}
 
-/* ---------- Toast ---------- */
-#toasts{position:fixed;top:58px;left:50%;transform:translateX(-50%);z-index:200;
-  display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:max-content;max-width:92vw}
-.toast{background:var(--mod);color:var(--ink);padding:10px 18px;border-radius:13px;font-size:13px;
-  box-shadow:6px 8px 18px var(--sh-d),-4px -4px 10px var(--sh-l);
-  opacity:0;transform:translateY(-8px);transition:.3s;max-width:92vw}
-.toast.on{opacity:1;transform:none}
+.iconbtn{
+  width:38px;height:38px;flex:none;border:none;cursor:pointer;color:var(--dim);
+  background:var(--panel);border-radius:50%;padding:9px;
+  box-shadow:5px 5px 10px var(--sd),-4px -4px 9px var(--sl);
+  transition:box-shadow .18s,color .18s;
+}
+.iconbtn:hover{color:var(--txt)}
+.iconbtn:active{box-shadow:inset 4px 4px 8px rgba(0,0,0,.5),inset -3px -3px 7px rgba(255,255,255,.04);color:var(--green)}
 
-/* ---------- 面板 ---------- */
-#panelWrap{position:fixed;left:0;right:0;bottom:0;z-index:50;
-  transition:transform .42s cubic-bezier(.32,.72,.28,1)}
-#panelWrap.closed{transform:translateY(calc(100% + 20px));pointer-events:none}
-#panel{max-height:70vh;overflow-y:auto;overscroll-behavior:contain;
-  padding:2px 16px calc(16px + env(safe-area-inset-bottom))}
-#panel::-webkit-scrollbar{width:8px}
-#panel::-webkit-scrollbar-thumb{background:rgba(0,0,0,.35);border-radius:99px}
+.playbtn{
+  width:54px;height:54px;flex:none;border:none;cursor:pointer;color:var(--green);
+  background:var(--panel);border-radius:50%;padding:16px;
+  box-shadow:6px 6px 12px var(--sd),-5px -5px 11px var(--sl);
+  transition:box-shadow .18s;
+}
+.playbtn:active{box-shadow:inset 5px 5px 10px rgba(0,0,0,.55),inset -4px -4px 8px rgba(255,255,255,.04)}
 
-.p-head{display:flex;align-items:center;gap:14px;padding:14px 2px 12px;max-width:1280px;margin:0 auto}
-.p-lab{font-size:11px;letter-spacing:.3em;color:var(--ink3);font-weight:600;flex:none}
-#mainProg{flex:1;min-width:100px}
-.p-num{font:600 12px/1 ui-monospace,'SF Mono',Consolas,monospace;color:var(--green);
-  flex:none;min-width:74px;text-align:right}
+/* 模式按钮各占一半 */
+#modeAcc,#modeTrig,#parseNovel,#parseScript{flex:1;min-width:0}
 
-.p-grid{display:grid;gap:14px;max-width:1280px;margin:0 auto;
-  grid-template-columns:repeat(auto-fit,minmax(152px,1fr))}
-@media(min-width:1230px){.p-grid{grid-template-columns:repeat(8,1fr)}}
+/* ============ 滑块 ============ */
+input[type=range]{
+  -webkit-appearance:none;appearance:none;background:transparent;
+  height:26px;flex:1;min-width:60px;cursor:pointer;
+}
+input[type=range]::-webkit-slider-runnable-track{
+  height:8px;border-radius:6px;
+  background:linear-gradient(to right,var(--green) var(--p,0%),var(--well) var(--p,0%));
+  box-shadow:inset 2px 2px 5px rgba(0,0,0,.55);
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:20px;height:20px;border-radius:50%;margin-top:-6px;
+  background:var(--green);border:3px solid var(--panel);
+  box-shadow:2px 2px 6px rgba(0,0,0,.55);
+}
+input[type=range]::-moz-range-track{
+  height:8px;border-radius:6px;
+  background:linear-gradient(to right,var(--green) var(--p,0%),var(--well) var(--p,0%));
+  box-shadow:inset 2px 2px 5px rgba(0,0,0,.55);
+}
+input[type=range]::-moz-range-thumb{
+  width:15px;height:15px;border-radius:50%;background:var(--green);
+  border:3px solid var(--panel);box-shadow:2px 2px 6px rgba(0,0,0,.55);
+}
 
-.mod{background:var(--mod);border-radius:20px;padding:16px 15px 13px;
-  box-shadow:8px 9px 18px var(--sh-d),-7px -7px 14px var(--sh-l);
-  display:flex;flex-direction:column;gap:11px;min-width:0;min-height:0}
-.mod h3{font-size:11px;font-weight:600;letter-spacing:.3em;color:var(--ink3);
-  display:flex;align-items:center;gap:8px}
-.mod h3 i{width:5px;height:5px;border-radius:50%;background:var(--green);opacity:.85;flex:none}
-.mod h3::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.06)}
-.hint{font-size:11.5px;color:var(--ink3);line-height:1.65;margin-top:auto}
+/* ============ 数字输入 ============ */
+.num{
+  width:76px;flex:none;border:none;outline:none;color:var(--txt);
+  background:var(--well);border-radius:10px;padding:8px 4px;text-align:center;
+  font:600 15px 'Rajdhani',monospace;box-shadow:inset 3px 3px 7px rgba(0,0,0,.5),inset -2px -2px 5px rgba(255,255,255,.03);
+}
+.num::-webkit-outer-spin-button,.num::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.num{-moz-appearance:textfield;appearance:textfield}
 
-.meta{font-size:12px;color:var(--ink3);line-height:1.6;word-break:break-all}
-.meta .bname{color:var(--ink2);font-weight:600;display:block}
+/* ============ 底部设置面板 ============ */
+#panel{
+  position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--bg);
+  padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+  border-top:1px solid rgba(255,255,255,.03);
+  transition:transform .5s cubic-bezier(.4,0,.2,1);
+}
+body.panel-hidden #panel{transform:translateY(110%)}
+.progRow{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+#progTxt{font:600 13px 'Rajdhani';color:var(--dim);min-width:70px;text-align:right;font-variant-numeric:tabular-nums}
+.params{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;max-height:42dvh;overflow-y:auto;padding-bottom:2px}
+.param{
+  background:var(--panel);border-radius:14px;padding:9px 12px;min-height:86px;
+  box-shadow:7px 7px 14px var(--sd),-5px -5px 12px var(--sl);
+  display:flex;flex-direction:column;justify-content:space-between;gap:6px;
+  transition:opacity .3s;
+}
+.param.locked{opacity:.35;pointer-events:none}
+.p-head{display:flex;justify-content:space-between;align-items:baseline}
+.p-label{font-size:12px;font-weight:600;color:var(--txt)}
+.p-unit{font-size:10px;color:var(--dim);letter-spacing:.1em}
+.p-row{display:flex;align-items:center;gap:8px}
 
-/* ---------- 按钮 ---------- */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:none;cursor:pointer;
-  border-radius:13px;padding:10px 12px;font-size:13px;font-weight:600;width:100%;
-  background:var(--green);color:var(--green-ink);
-  box-shadow:5px 5px 12px var(--sh-d),-4px -4px 10px var(--sh-l);
-  transition:transform .15s,box-shadow .15s}
-.btn:active{transform:translateY(1px);
-  box-shadow:inset 4px 4px 8px rgba(8,42,38,.5),inset -3px -3px 6px rgba(255,255,255,.28)}
-.btn.sm{padding:8px 10px;font-size:12px;border-radius:11px}
-.btn.ghost{background:var(--mod);color:var(--ink2);
-  box-shadow:inset 4px 4px 8px rgba(12,14,16,.5),inset -3px -3px 6px rgba(255,255,255,.045)}
-.btn.ghost:active{color:var(--green)}
-.btn.live{animation:breath 2.4s ease-in-out infinite}
-@keyframes breath{50%{box-shadow:5px 5px 12px var(--sh-d),-4px -4px 10px var(--sh-l),0 0 0 5px rgba(57,197,187,.15)}}
+/* ============ 底栏（细线进度 + 把手） ============ */
+#dock{position:fixed;left:0;right:0;bottom:0;z-index:50;pointer-events:none;transition:opacity .4s}
+#miniTrack{height:3px;width:100%;background:rgba(255,255,255,.06)}
+#miniFill{height:100%;width:0;background:var(--green);transition:width .3s linear}
+#handle{
+  position:absolute;left:50%;transform:translateX(-50%);bottom:calc(9px + env(safe-area-inset-bottom));
+  width:66px;height:24px;border:none;cursor:pointer;color:var(--green);
+  background:var(--panel);border-radius:13px;padding:6px 20px;pointer-events:auto;
+  box-shadow:5px 5px 10px var(--sd),-4px -4px 9px var(--sl);
+}
+#handle:active{box-shadow:inset 3px 3px 7px rgba(0,0,0,.5)}
+/* 面板展开且非全屏 → 整个底栏隐藏；面板展开+全屏 → 只留细线 */
+body:not(.panel-hidden):not(.fs) #dock{opacity:0}
+body:not(.panel-hidden) #handle{opacity:0;pointer-events:none}
 
-.icon-btn{width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;flex:none;
-  background:var(--mod);color:var(--ink2);display:grid;place-items:center;
-  box-shadow:4px 4px 9px var(--sh-d),-3px -3px 8px var(--sh-l);transition:.15s}
-.icon-btn:active{color:var(--green);
-  box-shadow:inset 3px 3px 6px rgba(12,14,16,.5),inset -2px -2px 5px rgba(255,255,255,.05)}
-
-.brow{display:flex;gap:8px}
-.bcol{display:flex;flex-direction:column;gap:8px}
-.steprow{display:flex;align-items:baseline;gap:7px;color:var(--ink3);font-size:12px}
-.steprow b{font:700 25px/1 ui-monospace,'SF Mono',Consolas,monospace;color:var(--green)}
-
-/* ---------- 分段选择 ---------- */
-.seg{display:flex;gap:9px}
-.seg-btn{flex:1;padding:9px 4px;border-radius:12px;border:none;cursor:pointer;
-  background:var(--mod);color:var(--ink2);font:600 13px/1 inherit;
-  box-shadow:inset 4px 4px 8px rgba(12,14,16,.55),inset -3px -3px 6px rgba(255,255,255,.045);
-  display:flex;align-items:center;justify-content:center;gap:5px;transition:.18s;min-width:0}
-.seg-btn.sel{background:var(--green);color:var(--green-ink);
-  box-shadow:4px 4px 10px var(--sh-d),-3px -3px 8px var(--sh-l),inset 0 0 0 1px rgba(255,255,255,.16)}
-.seg-btn.locked{opacity:.42;cursor:not-allowed}
-.seg-btn .lk{display:none;line-height:0}
-.seg-btn.locked .lk{display:inline-flex}
-.seg-btn.deny{animation:deny .32s}
-@keyframes deny{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
-
-/* ---------- 参数行 ---------- */
-.prm{display:flex;flex-direction:column;gap:3px;min-width:0}
-.prm-top{display:flex;align-items:center;justify-content:space-between;gap:6px}
-.prm-top label{font-size:12px;color:var(--ink2)}
-.pnum{width:64px;background:#26292d;border:none;border-radius:9px;padding:5px 7px;color:var(--green);
-  font:600 12px/1.2 ui-monospace,'SF Mono',Consolas,monospace;text-align:right;
-  box-shadow:inset 3px 3px 6px rgba(12,14,16,.6),inset -2px -2px 4px rgba(255,255,255,.04)}
-.pnum:focus{outline:none;box-shadow:inset 3px 3px 6px rgba(12,14,16,.6),0 0 0 1.5px rgba(57,197,187,.65)}
-input[type=number]::-webkit-outer-spin-button,
-input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-input[type=number]{-moz-appearance:textfield;appearance:textfield}
-
-/* ---------- 滑块 ---------- */
-.rng{-webkit-appearance:none;appearance:none;width:100%;height:24px;background:transparent;cursor:pointer}
-.rng::-webkit-slider-runnable-track{height:8px;border-radius:99px;
-  background:linear-gradient(90deg,rgba(57,197,187,.92) var(--p,0%),#24272b var(--p,0%));
-  box-shadow:inset 3px 3px 6px rgba(12,14,16,.65),inset -2px -2px 4px rgba(255,255,255,.05)}
-.rng::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-4px;border-radius:50%;
-  background:var(--green);
-  box-shadow:2px 2px 6px rgba(12,14,16,.6),-1px -1px 3px rgba(255,255,255,.3),inset 0 0 0 2px rgba(255,255,255,.14)}
-.rng::-moz-range-track{height:8px;border-radius:99px;background:#24272b;
-  box-shadow:inset 3px 3px 6px rgba(12,14,16,.65),inset -2px -2px 4px rgba(255,255,255,.05)}
-.rng::-moz-range-progress{height:8px;border-radius:99px;background:rgba(57,197,187,.92)}
-.rng::-moz-range-thumb{width:16px;height:16px;border:none;border-radius:50%;background:var(--green);
-  box-shadow:2px 2px 6px rgba(12,14,16,.6)}
-
-/* ---------- 底部浮动展开钮 ---------- */
-#floatToggle{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));z-index:60;
-  width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
-  background:var(--green);color:var(--green-ink);display:grid;place-items:center;
-  box-shadow:0 12px 26px rgba(0,0,0,.5),0 3px 8px rgba(57,197,187,.3);
-  transform:translateX(-50%) translateY(70px);opacity:0;pointer-events:none;transition:.38s}
-body.panel-closed #floatToggle{transform:translateX(-50%);opacity:1;pointer-events:auto}
-
-/* ---------- 底部细线进度条 ---------- */
-#thinWrap{position:fixed;left:0;right:0;bottom:0;height:24px;z-index:80;display:none;cursor:pointer}
-body.panel-closed #thinWrap,body.fs #thinWrap{display:block}
-#thinRange{-webkit-appearance:none;appearance:none;width:100%;height:24px;background:transparent;
-  cursor:pointer;position:absolute;inset:0;margin:0}
-#thinRange::-webkit-slider-runnable-track{height:4px;border-radius:99px;
-  background:linear-gradient(90deg,var(--green) var(--p,0%),rgba(0,0,0,.35) var(--p,0%));
-  box-shadow:inset 0 1px 2px rgba(0,0,0,.5)}
-#thinRange::-webkit-slider-thumb{-webkit-appearance:none;width:7px;height:14px;margin-top:-5px;
-  border-radius:3px;background:var(--green);box-shadow:0 1px 4px rgba(0,0,0,.5)}
-#thinRange::-moz-range-track{height:4px;border-radius:99px;background:rgba(0,0,0,.35)}
-#thinRange::-moz-range-progress{height:4px;border-radius:99px;background:var(--green)}
-#thinRange::-moz-range-thumb{width:7px;height:14px;border:none;border-radius:3px;background:var(--green)}
+/* ============ 提示条 ============ */
+#toast{
+  position:fixed;top:16px;left:50%;transform:translate(-50%,-14px);opacity:0;z-index:99;
+  background:var(--panel);color:var(--txt);padding:10px 20px;border-radius:12px;font-size:13px;font-weight:600;
+  box-shadow:8px 8px 18px var(--sd),-5px -5px 12px var(--sl);
+  transition:opacity .3s,transform .3s;pointer-events:none;max-width:86vw;text-align:center;
+}
+#toast.show{opacity:1;transform:translate(-50%,0)}
 </style>
 </head>
 <body>
-<div id="stage"></div>
-<div id="emptyHint">上 传 一 本 书 · 选 择 播 放 模 式 · 走 起 来</div>
 
-<header id="statusPill">
-  <span class="dot"></span><span class="brand">步读</span>
-  <span class="sep"></span><span id="stMode">未选模式</span>
-  <span class="sep"></span><span id="stSent">0/0</span>
-  <span class="sep"></span><span id="stSteps">0 步</span>
-  <span id="stCue"></span>
+<div id="stage"></div>
+
+<!-- 顶部功能模块行 -->
+<header id="hud">
+  <div class="mod brand">
+    <div class="tag">TAJU · STEP READER</div>
+    <div class="row">
+      <span class="logo">踏句</span>
+      <button class="iconbtn" id="fsBtn" title="全屏"></button>
+    </div>
+  </div>
+
+  <div class="mod" style="flex:1.4 1 210px">
+    <div class="tag">书籍 BOOK</div>
+    <div class="row">
+      <button class="iconbtn" id="loadBtn" title="载入 txt / epub" style="width:42px;height:42px"></button>
+      <div class="bookinfo">
+        <div id="bookName">未载入书籍</div>
+        <div id="bookMeta">点击左侧按钮选择文件</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mod" style="flex:1.4 1 210px">
+    <div class="tag">播放 PLAYBACK</div>
+    <div class="row">
+      <button class="playbtn" id="playBtn" title="开始 / 暂停"></button>
+      <div class="statecol">
+        <div id="stateTxt">待机</div>
+        <div id="stateSub">选择播放模式后开始</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mod">
+    <div class="tag">播放模式 · 本次锁定</div>
+    <div class="row">
+      <button class="btn" id="modeAcc">累积播放</button>
+      <button class="btn" id="modeTrig">触发播放</button>
+    </div>
+  </div>
+
+  <div class="mod">
+    <div class="tag">解析 PARSING</div>
+    <div class="row">
+      <button class="btn" id="parseNovel">小说</button>
+      <button class="btn" id="parseScript">剧本</button>
+    </div>
+  </div>
+
+  <div class="mod">
+    <div class="tag">计步 PEDOMETER</div>
+    <div class="row">
+      <div id="stepNum">0</div>
+      <button class="btn sm" id="motionBtn">启用</button>
+      <button class="btn sm" id="simBtn">模拟</button>
+    </div>
+  </div>
 </header>
 
-<div id="toasts"></div>
-
-<div id="panelWrap"><div id="panel">
-  <div class="p-head">
-    <span class="p-lab">阅读进度</span>
-    <input id="mainProg" class="rng" type="range" min="0" max="1000" step="1" value="0">
-    <span class="p-num" id="progText">0 / 0</span>
-    <button id="btnCollapse" class="icon-btn" title="收起面板"></button>
+<!-- 底部设置面板 -->
+<div id="panel">
+  <div class="progRow">
+    <input type="range" id="seek" min="1" max="1" step="1" value="1">
+    <span id="progTxt">0 / 0</span>
+    <button class="iconbtn" id="collapseBtn" title="收起面板" style="width:34px;height:34px;padding:8px"></button>
   </div>
-  <div class="p-grid">
+  <div class="params" id="params"></div>
+</div>
 
-    <section class="mod">
-      <h3><i></i>书 籍</h3>
-      <button class="btn" id="btnUpload"><span class="ic"></span><span>选择书籍</span></button>
-      <input type="file" id="fileInput" accept=".txt,.epub" hidden>
-      <div class="meta"><span class="bname" id="bookName">未选择</span><span id="bookStat">支持 TXT / EPUB，随时可更换</span></div>
-    </section>
+<!-- 底栏：细线进度条 + 把手 -->
+<div id="dock">
+  <div id="miniTrack"><div id="miniFill"></div></div>
+  <button id="handle" title="展开面板"></button>
+</div>
 
-    <section class="mod">
-      <h3><i></i>文本分析</h3>
-      <div class="seg" id="segAnalyse">
-        <button class="seg-btn" data-am="novel">小说</button>
-        <button class="seg-btn" data-am="script">剧本</button>
-      </div>
-      <p class="hint">句号断句、引号成对携带；剧本模式只念台词、不念人物名</p>
-    </section>
-
-    <section class="mod">
-      <h3><i></i>播放模式</h3>
-      <div class="seg">
-        <button class="seg-btn" data-pm="A">累积<span class="lk"></span></button>
-        <button class="seg-btn" data-pm="B">触发<span class="lk"></span></button>
-      </div>
-      <p class="hint" id="modeHint">选定后本次会话锁定，刷新页面可重选</p>
-    </section>
-
-    <section class="mod">
-      <h3><i></i>步数参数</h3>
-      <div id="prmPlay"></div>
-      <p class="hint">累积：每 N 步解锁一句；触发：步数上涨即连读 N 句</p>
-    </section>
-
-    <section class="mod">
-      <h3><i></i>字号范围</h3>
-      <div id="prmFont"></div>
-      <p class="hint">每句在最小 ~ 最大字号间随机取值</p>
-    </section>
-
-    <section class="mod">
-      <h3><i></i>语音</h3>
-      <div id="prmVoice"></div>
-      <p class="hint">调用系统默认 TTS，参数自下一句起生效</p>
-    </section>
-
-    <section class="mod">
-      <h3><i></i>计步器</h3>
-      <div class="steprow"><b id="stepNum">0</b><span>步（本次会话）</span></div>
-      <div class="brow">
-        <button class="btn sm" id="btnPed"><span class="ic"></span><span id="btnPedTxt">启动计步</span></button>
-        <button class="btn sm ghost" id="btnSim">模拟一步</button>
-      </div>
-      <div id="prmPede"></div>
-    </section>
-
-    <section class="mod">
-      <h3><i></i>控制</h3>
-      <div class="bcol">
-        <button class="btn sm" id="btnSpeak"><span class="ic"></span><span>朗读当前句</span></button>
-        <button class="btn sm ghost" id="btnFs"><span class="ic"></span><span id="btnFsTxt">进入全屏</span></button>
-      </div>
-    </section>
-
-  </div>
-</div></div>
-
-<button id="floatToggle" title="展开设置面板"></button>
-<div id="thinWrap"><input id="thinRange" type="range" min="0" max="1000" step="1" value="0"></div>
+<input type="file" id="fileInput" accept=".txt,.epub" hidden>
+<div id="toast"></div>
 
 <script>
 'use strict';
-/* ============ 工具 ============ */
-const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const $=s=>document.querySelector(s);
+const LS=window.localStorage;
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
-const rnd=(a,b)=>a+Math.random()*(b-a);
-const stage=$('#stage');
 
-/* 内联 SVG 图标（不依赖外部图标库） */
-const SV=(p)=>`<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
-const IC={
-  up:SV('<path d="M12 15V4m0 0-5 5m5-5 5 5M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/>'),
-  lock:SV('<rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/>'),
-  play:SV('<path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"/>'),
-  exp:SV('<path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/>'),
-  comp:SV('<path d="M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5"/>'),
-  chevU:SV('<path d="M6 14l6-6 6 6"/>'),
-  chevD:SV('<path d="M6 10l6 6 6-6"/>')
+/* ================= 图标 ================= */
+const ICON={
+  play:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.4v13.2L19 12z"/></svg>',
+  pause:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.4" y="5" width="3.8" height="14" rx="1.3"/><rect x="13.8" y="5" width="3.8" height="14" rx="1.3"/></svg>',
+  upload:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 20h16"/></svg>',
+  expand:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+  shrink:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>',
+  down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg>',
+  upChevron:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14.5l6-6 6 6"/></svg>',
+  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>'
 };
 
-/* ============ Toast ============ */
-function toast(msg,ms=2800){
-  const box=$('#toasts'),el=document.createElement('div');
-  el.className='toast';el.textContent=msg;box.appendChild(el);
-  requestAnimationFrame(()=>el.classList.add('on'));
-  setTimeout(()=>{el.classList.remove('on');setTimeout(()=>el.remove(),320)},ms);
+/* ================= 全局状态 ================= */
+const S={
+  sentences:[], idx:0,
+  playing:false, speaking:false,
+  mode:null,                 // 'acc' | 'trig'，选择后本次会话锁定，刷新重置
+  parseMode: LS.getItem('tj_parse')==='script' ? 'script':'novel',
+  credits:0, stepAccum:0,    // 累积模式：堆积配额 / 当前累积
+  trigArmed:true, trigQueue:0,
+  steps:0, talkId:0,
+};
+const P={};                  // 参数运行时值
+let rawText='', bookName='';
+let panelHidden=false, simOn=false, simTimer=null, seeking=false;
+
+/* ================= 参数模块（滑块 + 输入 双通道） ================= */
+function paintRange(r){
+  const min=+r.min,max=+r.max,v=+r.value;
+  r.style.setProperty('--p', max>min ? ((v-min)/(max-min)*100)+'%' : '0%');
 }
+function makeParam(def){
+  const el=document.createElement('div');
+  el.className='param';
+  el.innerHTML=`<div class="p-head"><span class="p-label">${def.label}</span><span class="p-unit">${def.unit||''}</span></div>
+  <div class="p-row"><input type="range" min="${def.min}" max="${def.max}" step="${def.rstep}">
+  <input class="num" type="number" inputmode="decimal" min="${def.min}" max="${def.max}" step="0.01"></div>`;
+  const range=el.querySelector('input[type=range]'), num=el.querySelector('.num');
+  let v=parseFloat(LS.getItem('tj_'+def.key));
+  if(!isFinite(v)) v=def.def;
+  v=clamp(Math.round(v*100)/100, def.min, def.max);
+  P[def.key]=v;
 
-/* ============ 参数系统（滑块 + 输入框，两位小数，localStorage 持久化） ============ */
-const DEFAULTS={stepThreshold:20,triggerCount:1,fontMin:26,fontMax:72,
-  rate:1,pitch:1,volume:1,sensitivity:1,analysisMode:'novel'};
-let P;
-try{P={...DEFAULTS,...JSON.parse(localStorage.getItem('sr_params')||'{}')}}catch{P={...DEFAULTS}}
-let saveT=null;
-function saveSoon(){clearTimeout(saveT);saveT=setTimeout(()=>{
-  try{localStorage.setItem('sr_params',JSON.stringify(P))}catch{}},250)}
-
-function setFill(r){const p=(+r.value-+r.min)/(+r.max-+r.min)*100;r.style.setProperty('--p',p+'%')}
-
-function buildParam(host,key,label,min,max,hook){
-  const row=document.createElement('div');row.className='prm';
-  row.innerHTML=`<div class="prm-top"><label>${label}</label>
-    <input type="number" class="pnum" inputmode="decimal" step="0.01" min="${min}" max="${max}"></div>
-    <input type="range" class="rng" min="${min}" max="${max}" step="0.01">`;
-  const rng=row.querySelector('.rng'),num=row.querySelector('.pnum');
-  const set=v=>{
-    v=clamp(Math.round((+v)*100)/100,min,max);
-    if(isNaN(v))v=DEFAULTS[key];
-    P[key]=v;rng.value=v;num.value=v.toFixed(2);setFill(rng);
-    if(hook)hook(v);saveSoon();
+  const render=()=>{ range.value=v; num.value=v.toFixed(2); paintRange(range); };
+  const commit=nv=>{
+    if(!isFinite(nv)) nv=v;
+    v=clamp(Math.round(nv*100)/100, def.min, def.max);
+    P[def.key]=v; render();
+    LS.setItem('tj_'+def.key, v.toFixed(2));
+    if(def.onChange) def.onChange(v);
   };
-  rng.addEventListener('input',()=>set(rng.value));
-  num.addEventListener('change',()=>set(num.value));
-  host.appendChild(row);
-  set(P[key]??DEFAULTS[key]);
-  return set;
+  range.addEventListener('input',()=>commit(parseFloat(range.value)));
+  num.addEventListener('change',()=>commit(parseFloat(num.value)));
+  num.addEventListener('blur',()=>{ num.value=v.toFixed(2); });
+  render();
+  return { el, get:()=>v, set:commit, lock:l=>el.classList.toggle('locked',l) };
 }
-const setFMin=buildParam($('#prmFont'),'fontMin','最小字号',12,150,v=>{if(v>P.fontMax)setFMax(v)});
-const setFMax=buildParam($('#prmFont'),'fontMax','最大字号',14,200,v=>{if(v<P.fontMin)setFMin(v)});
-buildParam($('#prmPlay'),'stepThreshold','累积步数 / 句',1,200);
-buildParam($('#prmPlay'),'triggerCount','触发句数',1,30);
-buildParam($('#prmVoice'),'rate','语速',0.5,2);
-buildParam($('#prmVoice'),'pitch','音调',0.5,1.5);
-buildParam($('#prmVoice'),'volume','音量',0,1);
-buildParam($('#prmPede'),'sensitivity','步伐灵敏度',0.3,2.5);
-
-/* ============ 全局状态 ============ */
-const S={sentences:[],idx:0,mode:null,steps:0};
-const Eng={speaking:false,cancelFlag:false,credits:0,pending:0,remainB:0,armed:true};
-let Book=null,curSent=null,speakTimer=null,liveU=null,voice=null,doneTold=false,warnedNoMode=false;
-
-const FONTS=["'Noto Sans SC',sans-serif","'Noto Serif SC',serif","'ZCOOL KuaiLe',cursive",
-  "'ZCOOL XiaoWei',serif","'Ma Shan Zheng',cursive","'Long Cang',cursive","'Liu Jian Mao Cao',cursive"];
-
-/* ============ 文本分析 ============ */
-const OPEN_Q=new Set(['\u201C','\u2018','\u300C','\u300E']);
-const CLOSE_Q=new Set(['\u201D','\u2019','\u300D','\u300F']);
-
-/* 小说模式：句号/问号/叹号断句；引号深度保证成对携带，绝不把对话拆碎 */
-function splitNovel(text){
-  const out=[];let cur='',depth=0,dq=0,sq=0;
-  const feed=ch=>{
-    if(OPEN_Q.has(ch)){depth++;return 'open'}
-    if(CLOSE_Q.has(ch)){depth--;return 'close'}
-    if(ch==='"'){if(dq%2===0){dq++;depth++;return 'open'}dq--;depth--;return 'close'}
-    if(ch==="'"){if(sq%2===0){sq++;depth++;return 'open'}sq--;depth--;return 'close'}
-    return null;
-  };
-  const peek=ch=>{
-    if(OPEN_Q.has(ch))return 'open';
-    if(CLOSE_Q.has(ch))return 'close';
-    if(ch==='"')return dq%2===1?'close':'open';
-    if(ch==="'")return sq%2===1?'close':'open';
-    return null;
-  };
-  const push=()=>{const s=cur.trim();if(s)out.push(s);cur='';depth=0};
-  let i=0;const n=text.length;
-  while(i<n){
-    const ch=text[i];cur+=ch;feed(ch);i++;
-    if(ch==='。'||ch==='！'||ch==='？'||ch==='．'){
-      while(i<n&&peek(text[i])==='close'){cur+=text[i];feed(text[i]);i++} // 吸收紧随其后的闭引号
-      if(depth<=0)push();          // 引号已平衡 → 完整一句
-      /* depth>0：句号在未闭合的引号内，句子继续延伸，避免引号裂开 */
-    }else if(ch==='\n'&&depth<=0){push()}
-  }
-  push();
-  return out;
+let pThreshold,pPerTrigger,pSizeMin,pSizeMax;
+function buildParams(){
+  pThreshold = makeParam({key:'threshold',label:'累积步数阈值',min:5,max:200,rstep:1,def:20,unit:'STEP / 句',onChange:updateHUD});
+  pPerTrigger= makeParam({key:'perTrigger',label:'触发朗读句数 X',min:1,max:30,rstep:1,def:1,unit:'句 / 次',onChange:updateHUD});
+  pSizeMin   = makeParam({key:'sizeMin',label:'随机字号下限',min:12,max:180,rstep:1,def:26,unit:'PX',onChange:v=>{ if(v>pSizeMax.get()) pSizeMax.set(v); }});
+  pSizeMax   = makeParam({key:'sizeMax',label:'随机字号上限',min:12,max:220,rstep:1,def:64,unit:'PX',onChange:v=>{ if(v<pSizeMin.get()) pSizeMin.set(v); }});
+  makeParam({key:'rate',label:'朗读语速',min:0.5,max:2,rstep:0.05,def:1,unit:'X / 下一句生效'});
+  makeParam({key:'volume',label:'朗读音量',min:0,max:1,rstep:0.05,def:1,unit:'VOL / 下一句生效'});
+  [pThreshold,pPerTrigger,pSizeMin,pSizeMax].forEach(p=>$('#params').appendChild(p.el));
+  // 语速 / 音量模块也在（makeParam 已按顺序 append，这里调整顺序无必要）
 }
 
-/* 剧本模式：人物：「台词」——整段台词为一句，只念引号内内容；其余行按小说规则 */
-function splitScript(text){
-  const out=[];
-  for(const line of text.split(/\r?\n/)){
-    const t=line.trim();if(!t)continue;
-    const m=t.match(/^([^\s：:"'「」]{1,12})\s*[：:]\s*[「"'](.+)[」"']\s*$/);
-    if(m)out.push(m[2]); // 贪婪匹配到最后一个闭引号，嵌套名词引号不会被截断
-    else out.push(...splitNovel(t));
-  }
-  return out;
-}
+/* ================= IndexedDB（书籍正文持久化） ================= */
+function idbOpen(){return new Promise((res,rej)=>{
+  const r=indexedDB.open('taju',1);
+  r.onupgradeneeded=e=>e.target.result.createObjectStore('kv');
+  r.onsuccess=e=>res(e.target.result);
+  r.onerror=()=>rej(r.error);
+});}
+async function idbSet(k,v){const d=await idbOpen();return new Promise((res,rej)=>{
+  const t=d.transaction('kv','readwrite');
+  t.objectStore('kv').put(v,k);
+  t.oncomplete=res; t.onerror=()=>rej(t.error);
+});}
+async function idbGet(k){const d=await idbOpen();return new Promise((res,rej)=>{
+  const q=d.transaction('kv','readonly').objectStore('kv').get(k);
+  q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error);
+});}
 
-function cleanSpeak(s){return s.replace(/["“”‘’「」『』]/g,'').replace(/\s+/g,' ').trim()}
+/* ================= 文本解析（小说 / 剧本，引号配对保护） ================= */
+const OPEN_Q={'“':'”','‘':'’','「':'」','『':'』','"':'"'};
+const CLOSE_Q={'”':1,'’':1,'」':1,'』':1,'"':1};
+const END_P=/[。！？!?…]/;
 
-function analyze(){
-  S.sentences=[];
-  if(!Book||!Book.text)return;
-  const raw=P.analysisMode==='script'?splitScript(Book.text):splitNovel(Book.text);
-  S.sentences=raw.map(t=>({text:t.trim(),speak:cleanSpeak(t)}))
-    .filter(s=>s.speak&&s.text);
-}
-
-/* ============ 书籍加载 ============ */
-function decodeTxt(buf){
-  if(buf[0]===0xEF&&buf[1]===0xBB&&buf[2]===0xBF)return new TextDecoder('utf-8').decode(buf);
-  for(const enc of['utf-8','gbk','big5']){
-    try{return new TextDecoder(enc,{fatal:true}).decode(buf)}catch{}
-  }
-  return new TextDecoder('utf-8').decode(buf);
-}
-function resolvePath(base,rel){
-  const out=[];
-  for(const seg of(base+rel).split('/')){
-    if(!seg||seg==='.')continue;
-    if(seg==='..')out.pop();else out.push(seg);
-  }
-  return out.join('/');
-}
-function zipFind(zip,path){
-  let f=zip.file(path);
-  if(f)return f;
-  try{f=zip.file(decodeURIComponent(path))}catch{}
-  if(f)return f;
-  const name=path.split('/').pop();
-  const hit=Object.keys(zip.files).find(k=>k===name||k.endsWith('/'+name));
-  return hit?zip.file(hit):null;
-}
-function extractText(root){
-  const BLOCK=new Set(['P','DIV','H1','H2','H3','H4','H5','H6','LI','BLOCKQUOTE',
-    'SECTION','ARTICLE','BR','TR','FIGURE','UL','OL','TABLE','ASIDE','NAV']);
-  let out='';
-  (function walk(n){
-    if(n.nodeType===3){out+=n.data;return}
-    if(n.nodeType!==1)return;
-    const tag=n.tagName;
-    if(/^(SCRIPT|STYLE|HEAD|TITLE)$/.test(tag))return;
-    if(tag==='BR'){out+='\n';return}
-    n.childNodes.forEach(walk);
-    if(BLOCK.has(tag))out+='\n';
-  })(root);
-  return out;
-}
-async function parseEpub(buf){
-  if(typeof JSZip==='undefined')throw new Error('nozip');
-  const zip=await JSZip.loadAsync(buf);
-  const cont=zipFind(zip,'META-INF/container.xml');
-  if(!cont)throw new Error('bad');
-  const cxml=await cont.async('string');
-  const m=cxml.match(/full-path\s*=\s*"([^"]+)"/);
-  if(!m)throw new Error('bad');
-  const opfPath=m[1],dir=opfPath.includes('/')?opfPath.replace(/[^/]*$/,''):'';
-  const opfFile=zipFind(zip,opfPath);
-  if(!opfFile)throw new Error('bad');
-  const doc=new DOMParser().parseFromString(await opfFile.async('string'),'application/xml');
-  if(doc.querySelector('parsererror'))throw new Error('bad');
-  const map={};
-  doc.querySelectorAll('manifest item').forEach(it=>map[it.getAttribute('id')]=it.getAttribute('href'));
-  const refs=[...doc.querySelectorAll('spine itemref')].map(r=>map[r.getAttribute('idref')]).filter(Boolean);
-  let text='';
-  for(const href of refs){
-    const f=zipFind(zip,dir?resolvePath(dir,href):href);
-    if(!f)continue;
-    const h=new DOMParser().parseFromString(await f.async('string'),'text/html');
-    if(h.body)text+=extractText(h.body)+'\n';
-  }
-  return text.replace(/\n{3,}/g,'\n\n');
-}
-
- $('#btnUpload').addEventListener('click',()=>$('#fileInput').click());
- $('#fileInput').addEventListener('change',async e=>{
-  const f=e.target.files[0];e.target.value='';
-  if(!f)return;
-  toast('正在解析书籍…');
-  try{
-    let text;
-    if(/\.epub$/i.test(f.name))text=await parseEpub(await f.arrayBuffer());
-    else text=decodeTxt(await f.arrayBuffer());
-    if(!text||!text.trim())throw new Error('empty');
-    Book={name:f.name.replace(/\.(txt|epub)$/i,''),text};
-    try{localStorage.setItem('sr_book',JSON.stringify(Book))}
-    catch{toast('书籍较大，本次会话内可用，未能长期保存')}
-    stopSpeaking();
-    S.idx=0;S.steps=0;doneTold=false;
-    Eng.credits=0;Eng.pending=0;Eng.remainB=0;Eng.armed=true;
-    analyze();updateAll();
-    toast(`已加载《${Book.name}》，共 ${S.sentences.length} 句`);
-  }catch(err){
-    toast(/\.epub$/i.test(f.name)?'EPUB 解析失败（需联网加载解析库）':'无法识别该书文本');
-  }
-});
-
-/* ============ TTS（系统默认语音） ============ */
-function pickVoice(){
-  if(!('speechSynthesis'in window))return;
-  const vs=speechSynthesis.getVoices();if(!vs.length)return;
-  voice=vs.find(v=>v.default&&/zh/i.test(v.lang))
-    ||vs.find(v=>/^zh[-_]?cn/i.test(v.lang))
-    ||vs.find(v=>/^zh/i.test(v.lang))
-    ||vs.find(v=>v.default)||null;
-}
-if('speechSynthesis'in window){
-  pickVoice();
-  speechSynthesis.addEventListener('voiceschanged',pickVoice);
-}else toast('当前浏览器不支持语音合成');
-
-function speakText(text){
-  if(!('speechSynthesis'in window)){setTimeout(endSentence,50);return}
-  const u=new SpeechSynthesisUtterance(text);
-  u.rate=clamp(P.rate,0.1,10);u.pitch=clamp(P.pitch,0,2);u.volume=clamp(P.volume,0,1);
-  if(voice){u.voice=voice;u.lang=voice.lang}else u.lang='zh-CN';
-  liveU=u; // 保引用，防止被回收导致 onend 丢失
-  let done=false;
-  const fin=()=>{
-    if(done)return;done=true;
-    clearTimeout(speakTimer);speakTimer=null;
-    if(Eng.cancelFlag){Eng.cancelFlag=false;return}
-    endSentence();
-  };
-  u.onend=fin;u.onerror=fin;
-  speechSynthesis.speak(u);
-  const est=text.length/(4*Math.max(0.3,P.rate))*1000+3000;
-  speakTimer=setTimeout(fin,Math.max(9000,est*2)); // 兜底：防止个别设备 onend 不回调
-}
-
-/* ============ 播放引擎 ============ */
-function pump(){
-  if(Eng.speaking||!S.sentences.length||S.idx>=S.sentences.length)return;
-  if(S.mode==='A'){if(Eng.credits>0){Eng.credits--;go()}}
-  else if(S.mode==='B'){if(Eng.remainB>0){Eng.remainB--;go()}}
-}
-function go(){
-  if(Eng.speaking)return;
-  if(S.idx>=S.sentences.length){
-    if(!doneTold){doneTold=true;toast('已读完全书，可拖动进度条回看')}
-    return;
-  }
-  Eng.speaking=true;Eng.cancelFlag=false;
-  const s=S.sentences[S.idx];
-  showSentence(s.text);
-  updateStatus();
-  setTimeout(()=>speakText(s.speak),60); // 略延迟，规避 cancel 后立即 speak 的兼容问题
-}
-function endSentence(){
-  hideSentence(false);
-  Eng.speaking=false;
-  S.idx++;
-  if(S.mode==='B'&&Eng.remainB<=0)Eng.armed=true; // 读完所有句数后才重新武装
-  saveProgressSoon();
-  updateAll();
-  pump(); // 模式 A 有堆积权限 → 立即接下一句
-}
-function onStep(){
-  S.steps++;
-  $('#stepNum').textContent=S.steps;
-  if(!S.mode){
-    if(!warnedNoMode){warnedNoMode=true;toast('请先在下方选择一种播放模式')}
-    updateStatus();return;
-  }
-  if(S.mode==='A'){
-    const thr=Math.max(1,Math.round(P.stepThreshold));
-    Eng.pending++;
-    while(Eng.pending>=thr){Eng.pending-=thr;Eng.credits++} // 朗读期间的步数照常累积、堆积
-  }else if(S.mode==='B'){
-    if(!Eng.speaking&&Eng.armed){ // 朗读期间步数上涨不触发；读完后首次上涨才触发
-      Eng.remainB=clamp(Math.round(P.triggerCount),1,999);
-      Eng.armed=false;
+function pushChunks(t,start,out){                 // 超长句保护性软切
+  if(t.length<=150){ if(t.trim()) out.push({text:t.trim(),start}); return; }
+  let buf='',st=start;
+  for(const ch of t){
+    buf+=ch;
+    if((/[，,、；;：:]/.test(ch)&&buf.length>=50)||buf.length>=150){
+      if(buf.trim()) out.push({text:buf.trim(),start:st});
+      st+=buf.length; buf='';
     }
   }
-  updateStatus();
-  pump();
-}
-function stopSpeaking(){
-  if(!Eng.speaking)return;
-  Eng.cancelFlag=true;
-  try{speechSynthesis.cancel()}catch{}
-  clearTimeout(speakTimer);speakTimer=null;
-  hideSentence(true);
-  Eng.speaking=false;Eng.remainB=0;Eng.armed=true;
-}
-function jumpTo(i){
-  if(!S.sentences.length)return;
-  stopSpeaking();
-  S.idx=clamp(Math.round(i),0,S.sentences.length-1);
-  doneTold=false;
-  saveProgressSoon();updateAll();
-  pump(); // 若模式 A 仍有堆积句权限，跳转后立即从新位置继续
+  if(buf.trim()) out.push({text:buf.trim(),start:st});
 }
 
-/* ============ 句子随机展示 ============ */
-function showSentence(text){
-  hideSentence(true);
-  const el=document.createElement('div');el.className='sentence';
-  const lo=Math.min(P.fontMin,P.fontMax),hi=Math.max(P.fontMin,P.fontMax);
-  el.style.fontSize=rnd(lo,hi).toFixed(2)+'px';
-  el.style.maxWidth='min(92vw,26em)';
-  [...text].forEach((ch,i)=>{
-    const sp=document.createElement('span');sp.className='ch';
-    sp.textContent=ch===' '?'\u00A0':ch;
-    sp.style.color=`hsl(${Math.round(rnd(0,360))},${Math.round(rnd(45,95))}%,${Math.round(rnd(52,80))}%)`;
-    sp.style.fontFamily=FONTS[Math.floor(Math.random()*FONTS.length)];
-    sp.style.fontSize=rnd(0.9,1.12).toFixed(2)+'em';
-    sp.style.setProperty('--r',rnd(-6,6).toFixed(1)+'deg');
-    sp.style.animationDelay=Math.min(i*26,2400)+'ms';
-    el.appendChild(sp);
-  });
-  el.style.visibility='hidden';
-  stage.appendChild(el);
-  // 先测量再定位：保证完整落在视口内，绝不贴边或被裁剪
-  const sideM=16,topM=64;
-  const botM=document.body.classList.contains('panel-closed')?84:$('#panelWrap').offsetHeight+14;
-  let w=el.offsetWidth,h=el.offsetHeight;
-  const availH=Math.max(80,innerHeight-topM-botM);
-  if(h>availH){const sc=availH/h;el.style.transform=`scale(${sc.toFixed(3)})`;w*=sc;h*=sc}
-  const maxL=Math.max(sideM,innerWidth-sideM*2-w);
-  const maxT=Math.max(topM,innerHeight-botM-h-topM);
-  el.style.left=Math.round(rnd(sideM,maxL))+'px';
-  el.style.top=Math.round(rnd(topM,maxT))+'px';
-  el.style.visibility='';
-  requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('on')));
-  curSent=el;
-}
-function hideSentence(immediate){
-  if(!curSent)return;
-  const el=curSent;curSent=null;
-  if(immediate){el.remove();return}
-  el.classList.add('out');
-  setTimeout(()=>el.remove(),340);
-}
-addEventListener('resize',()=>{ // 旋转/缩放屏幕后把句子拉回安全区
-  if(!curSent)return;
-  const el=curSent,w=el.offsetWidth,h=el.offsetHeight;
-  el.style.left=clamp(parseFloat(el.style.left)||0,16,Math.max(16,innerWidth-w-16))+'px';
-  el.style.top=clamp(parseFloat(el.style.top)||64,64,Math.max(64,innerHeight-h-40))+'px';
-});
+function splitSentences(t){
+  const out=[]; let stack=[],start=0,seen=false;
+  const push=(s,e)=>pushChunks(t.slice(s,e),s,out);
+  for(let i=0;i<t.length;i++){
+    const ch=t[i];
+    if(OPEN_Q[ch]) stack.push(OPEN_Q[ch]);
+    else if(CLOSE_Q[ch]) stack.pop();
 
-/* ============ 进度条 ============ */
-const mainProg=$('#mainProg'),thinRange=$('#thinRange'),progText=$('#progText');
-function updateProgressUI(){
-  const t=S.sentences.length,c=Math.min(S.idx,t);
-  const v=t?Math.round(c/t*1000):0;
-  mainProg.value=v;thinRange.value=v;setFill(mainProg);setFill(thinRange);
-  progText.textContent=`${c} / ${t}`;
-}
-let progT=null;
-function saveProgressSoon(){clearTimeout(progT);progT=setTimeout(()=>{
-  try{localStorage.setItem('sr_idx',String(S.idx))}catch{}},800)}
-function onProgInput(src){
-  setFill(src);
-  const o=src===mainProg?thinRange:mainProg;
-  o.value=src.value;setFill(o);
-  const t=S.sentences.length;
-  if(t){const tg=Math.round(src.value/1000*(t-1));progText.textContent=`${tg+1} / ${t}`}
-}
-[mainProg,thinRange].forEach(r=>{
-  r.addEventListener('input',()=>onProgInput(r));
-  r.addEventListener('change',()=>{
-    const t=S.sentences.length;if(!t)return;
-    jumpTo(Math.round(r.value/1000*(t-1)));
-  });
-});
-
-/* ============ 状态显示 ============ */
-function updateStatus(){
-  $('#stMode').textContent=S.mode==='A'?'累积':S.mode==='B'?'触发':'未选';
-  $('#stSent').textContent=`${Math.min(S.idx,S.sentences.length)}/${S.sentences.length}`;
-  $('#stSteps').textContent=`${S.steps} 步`;
-  let cue='';
-  const thr=Math.max(1,Math.round(P.stepThreshold));
-  if(S.mode==='A')
-    cue=Eng.speaking?'朗读中':(Eng.credits>0?`堆积 ${Eng.credits} 句`:`还差 ${thr-Eng.pending} 步`);
-  else if(S.mode==='B')
-    cue=Eng.speaking?(Eng.remainB>0?`连读剩 ${Eng.remainB} 句`:'朗读中'):(Eng.armed?'等待步伐':'队列中');
-  $('#stCue').textContent=cue;
-}
-function updateBookStat(){
-  $('#bookName').textContent=Book?Book.name:'未选择';
-  $('#bookStat').textContent=S.sentences.length
-    ?`${S.sentences.length} 句 · ${P.analysisMode==='script'?'剧本':'小说'}模式`:'上传后自动断句';
-  document.body.classList.toggle('has-book',!!Book);
-}
-function updateAll(){updateStatus();updateProgressUI();updateBookStat()}
-
-/* ============ 文本分析切换（随时互换，进度按比例保留） ============ */
- $$('#segAnalyse .seg-btn').forEach(b=>b.addEventListener('click',()=>{
-  if(P.analysisMode===b.dataset.am)return;
-  P.analysisMode=b.dataset.am;saveSoon();
-  applyAnalysisUI();
-  const ratio=S.sentences.length?S.idx/S.sentences.length:0;
-  stopSpeaking();
-  analyze();
-  S.idx=S.sentences.length?Math.min(Math.floor(ratio*S.sentences.length),S.sentences.length-1):0;
-  doneTold=false;
-  updateAll();
-  toast(`已切换为${P.analysisMode==='script'?'剧本':'小说'}模式，共 ${S.sentences.length} 句`);
-}));
-function applyAnalysisUI(){
-  $$('#segAnalyse .seg-btn').forEach(b=>b.classList.toggle('sel',b.dataset.am===P.analysisMode));
-}
-applyAnalysisUI();
-
-/* ============ 播放模式（选定即锁定，刷新页面后重可选） ============ */
- $$('[data-pm]').forEach(b=>{
-  b.querySelector('.lk').innerHTML=IC.lock;
-  b.addEventListener('click',()=>{
-    if(S.mode===b.dataset.pm)return;
-    if(S.mode){ // 另一个模式已在本次会话锁定
-      b.classList.remove('deny');void b.offsetWidth;b.classList.add('deny');
-      toast('播放模式本次会话已锁定，刷新页面后可重新选择');
-      return;
+    if(ch==='\n'&&t[i-1]==='\n'&&stack.length===0){     // 空行（章节边界）强制断句
+      if(t.slice(start,i).trim()) push(start,i);
+      start=i; stack=[]; seen=false; continue;
     }
-    S.mode=b.dataset.pm;
-    try{sessionStorage.setItem('sr_lock',S.mode)}catch{}
-    applyModeUI();updateStatus();
-    toast(S.mode==='A'
-      ?'已选择「步数累积」：每 N 步解锁一句，朗读中照常累积'
-      :'已选择「步数触发」：步数上涨即连读 N 句');
-  });
-});
-function applyModeUI(){
-  $$('[data-pm]').forEach(b=>{
-    const sel=S.mode===b.dataset.pm;
-    b.classList.toggle('sel',sel);
-    b.classList.toggle('locked',!!S.mode&&!sel);
-  });
-  $('#modeHint').textContent=
-    S.mode==='A'?'每 N 步解锁一句；朗读期间累积可堆积'
-    :S.mode==='B'?'步数上涨即连读 N 句；读完前不再触发'
-    :'选定后本次会话锁定，刷新页面可重选';
-}
-(function(){ // 刷新后解锁、会话内保持锁定
-  let navType='navigate';
-  const es=performance.getEntriesByType?performance.getEntriesByType('navigation'):[];
-  if(es.length)navType=es[0].type;
-  else if(performance.navigation)navType=performance.navigation.type===1?'reload':'navigate';
-  if(navType==='reload'){try{sessionStorage.removeItem('sr_lock')}catch{}}
-  try{const lock=sessionStorage.getItem('sr_lock');if(lock){S.mode=lock}}catch{}
-  applyModeUI();
-})();
-
-/* ============ 计步器（加速度计 + 权限申请） ============ */
-const Ped={on:false,rising:true,base:9.81,lastAt:0,
-  async start(){
-    if(!('DeviceMotionEvent'in window)){
-      toast('此设备不支持运动传感器，可用「模拟一步」体验流程');
-    }else{
-      if(typeof DeviceMotionEvent.requestPermission==='function'){ // iOS 系需授权
-        let r;
-        try{r=await DeviceMotionEvent.requestPermission()}
-        catch{toast('传感器权限请求失败');return}
-        if(r!=='granted'){toast('传感器权限被拒绝');return}
+    if(END_P.test(ch)){                                  // 句末标点
+      seen=true;
+      if(stack.length===0){                              // 引号已全部闭合 → 在此断句
+        let j=i+1;
+        while(j<t.length&&(END_P.test(t[j])||CLOSE_Q[t[j]])) j++;  // 连标点 / 紧随闭引号一并带上
+        push(start,j); start=j; stack=[]; seen=false;
       }
-      window.addEventListener('devicemotion',Ped.motion);
+    }else if(CLOSE_Q[ch]&&stack.length===0&&seen){       // 闭引号包住了句末标点 → 在引号处断
+      push(start,i+1); start=i+1; seen=false;
     }
-    Ped.on=true;Ped.rising=true;Ped.base=9.81;
-    $('#btnPed').classList.add('live');
-    $('#btnPedTxt').textContent='停止计步';
-    toast('计步器已启动，开始行走吧');
-  },
-  stop(){
-    window.removeEventListener('devicemotion',Ped.motion);
-    Ped.on=false;
-    $('#btnPed').classList.remove('live');
-    $('#btnPedTxt').textContent='启动计步';
-    toast('计步器已停止');
-  },
-  motion(e){
-    const a=e.accelerationIncludingGravity;
-    if(!a||a.x==null||a.y==null||a.z==null)return;
-    const m=Math.hypot(a.x,a.y,a.z);
-    Ped.base=Ped.base*0.985+m*0.015; // 缓慢自适应基线（重力）
-    const dev=Math.abs(m-Ped.base);
-    const thr=clamp(1.5/(P.sensitivity||1),0.5,6);
-    const now=performance.now();
-    if(Ped.rising&&dev>thr&&now-Ped.lastAt>300){Ped.lastAt=now;Ped.rising=false;onStep()}
-    else if(dev<thr*0.4)Ped.rising=true; // 波形回落后再允许计步，防一次迈步双计
   }
-};
- $('#btnPed').addEventListener('click',()=>Ped.on?Ped.stop():Ped.start());
- $('#btnSim').addEventListener('click',onStep);
-
-/* ============ 控制区 ============ */
- $('#btnSpeak').addEventListener('click',()=>{
-  if(!Book||!S.sentences.length){toast('请先上传书籍');return}
-  if(Eng.speaking){toast('正在朗读中');return}
-  if(S.idx>=S.sentences.length){toast('已读到结尾，可拖动进度条回退');return}
-  go();
-});
-function setFsBtn(){
-  const fs=!!document.fullscreenElement;
-  $('#btnFsTxt').textContent=fs?'退出全屏':'进入全屏';
-  $('#btnFs .ic').innerHTML=fs?IC.comp:IC.exp;
+  if(t.slice(start).trim()) push(start,t.length);
+  return out;
 }
- $('#btnFs').addEventListener('click',()=>{
-  if(document.fullscreenElement)document.exitFullscreen();
-  else{
-    const p=document.documentElement.requestFullscreen();
-    if(p&&p.catch)p.catch(()=>toast('当前环境不允许全屏'));
+
+function stripScript(t){                                // 剧本模式：剥离「人物：」前缀
+  const m=t.match(/^([^\n“”"‘’「」『』。！？；;，,]{1,12})[：:]/);
+  if(m && /^[“"「『]/.test(t.slice(m[0].length).ltrim?t.slice(m[0].length).ltrim:t.slice(m[0].length).replace(/^\s+/,''))){
+    return t.slice(m[0].length).replace(/^\s+/,'');
   }
+  return t;
+}
+
+function buildSentences(){
+  const list=rawText? splitSentences(rawText):[];
+  S.sentences=list.map(o=>({
+    start:o.start, text:o.text,
+    say: S.parseMode==='script' ? (stripScript(o.text)||o.text) : o.text
+  }));
+  S.idx=clamp(S.idx,0,Math.max(0,list.length-1));
+  $('#bookName').textContent=bookName||'未载入书籍';
+  $('#bookMeta').textContent=list.length? `${list.length} 句 · ${rawText.length} 字`:'点击左侧按钮选择 txt / epub';
+  $('#seek').max=Math.max(1,list.length);
+}
+
+/* ================= 句子随机浮现 ================= */
+const FONTS=[
+  "'Ma Shan Zheng','Noto Sans SC',serif",
+  "'ZCOOL XiaoWei','Noto Serif SC',serif",
+  "'ZCOOL KuaiLe','Noto Sans SC',sans-serif",
+  "'Noto Serif SC',serif",
+  "'Noto Sans SC',sans-serif"
+];
+function randColor(){
+  const h=(Math.random()*360)|0, s=60+Math.random()*32, l=58+Math.random()*20;
+  return `hsl(${h} ${s}% ${l}%)`;
+}
+function bounds(){
+  const top=$('#hud').getBoundingClientRect().bottom+10;
+  let bottom=innerHeight-16;
+  if(!panelHidden) bottom-=$('#panel').getBoundingClientRect().height+8;
+  return {top, bottom:Math.max(top+80,bottom)};
+}
+let curEl=null;
+function hideSentenceNow(){ if(curEl){curEl.remove();curEl=null;} }
+function hideSentence(){ if(!curEl)return; const el=curEl; curEl=null; el.classList.add('out'); setTimeout(()=>el.remove(),380); }
+
+function showSentence(text){
+  hideSentenceNow();
+  const el=document.createElement('div'); el.className='sent';
+  const a=Math.min(P.sizeMin,P.sizeMax), b=Math.max(P.sizeMin,P.sizeMax);
+  el.style.fontSize=(a+Math.random()*(b-a)).toFixed(2)+'px';
+  const frag=document.createDocumentFragment();
+  for(const ch of (text||'').replace(/\s+/g,' ').trim()){
+    const sp=document.createElement('span'); sp.className='ch'; sp.textContent=ch;
+    sp.style.color=randColor();
+    sp.style.fontFamily=FONTS[(Math.random()*FONTS.length)|0];
+    sp.style.animationDelay=(Math.random()*0.28).toFixed(2)+'s';
+    frag.appendChild(sp);
+  }
+  el.appendChild(frag);
+  $('#stage').appendChild(el);
+
+  const bd=bounds(), pad=14;
+  let w=el.offsetWidth*1.06, h=el.offsetHeight;                 // 余量防字体异步加载变宽
+  if(w>innerWidth-pad*2){ el.style.maxWidth=(innerWidth-pad*2)+'px'; w=el.offsetWidth; }
+  const xMax=Math.max(pad, innerWidth-w-pad);
+  el.style.left=(pad+Math.random()*(xMax-pad)).toFixed(1)+'px';
+  const yMin=bd.top, yMax=Math.max(yMin, bd.bottom-h-pad);
+  el.style.top=(yMin+Math.random()*(yMax-yMin)).toFixed(1)+'px';
+  curEl=el;
+}
+
+/* ================= TTS ================= */
+let zhVoice=null;
+function pickVoice(){
+  const vs=speechSynthesis.getVoices()||[];
+  zhVoice=vs.find(v=>/^zh[-_]CN/i.test(v.lang)&&v.localService)
+        ||vs.find(v=>/^zh/i.test(v.lang))
+        ||vs.find(v=>/中文|Chinese/i.test(v.name))||null;
+}
+if('speechSynthesis' in window){ speechSynthesis.onvoiceschanged=pickVoice; pickVoice(); }
+
+function chunk(t,n){const r=[];for(let i=0;i<t.length;i+=n)r.push(t.slice(i,i+n));return r;}
+
+function speakSegments(text,onDone,tid){
+  const segs=chunk(text.replace(/\s+/g,' ').trim(),80);
+  let i=0,done=false,wd=null;
+  const finish=()=>{
+    if(done||tid!==S.talkId)return;
+    done=true; clearTimeout(wd);
+    try{speechSynthesis.cancel();}catch(e){}
+    onDone();
+  };
+  const next=()=>{
+    if(done||tid!==S.talkId)return;
+    if(i>=segs.length){finish();return;}
+    const u=new SpeechSynthesisUtterance(segs[i++]);
+    u.lang='zh-CN'; u.rate=clamp(P.rate,0.5,2); u.volume=clamp(P.volume,0,1);
+    if(zhVoice){try{u.voice=zhVoice;}catch(e){}}
+    u.onend=next;
+    u.onerror=ev=>{ if(ev.error==='canceled'||ev.error==='interrupted')return; next(); };
+    speechSynthesis.speak(u);
+    clearTimeout(wd);
+    wd=setTimeout(finish, segs.slice(i-1).join('').length*900/P.rate+3500);  // 看门狗兜底
+  };
+  next();
+}
+function cancelSpeech(){ S.talkId++; S.speaking=false; try{speechSynthesis.cancel();}catch(e){} }
+
+/* ================= 播放核心 ================= */
+function playCurrent(){
+  if(S.speaking)return;
+  if(S.idx>=S.sentences.length){ finishBook(); return; }
+  S.speaking=true;
+  const tid=S.talkId;
+  showSentence(S.sentences[S.idx].say);
+  speakSegments(S.sentences[S.idx].say, ()=>{ if(tid!==S.talkId)return; sentenceDone(tid); }, tid);
+  updateHUD();
+}
+function sentenceDone(tid){
+  S.speaking=false;
+  hideSentence();
+  S.idx++; saveProgress(); updateHUD();
+  setTimeout(()=>{
+    if(tid!==S.talkId||!S.playing)return;
+    if(S.idx>=S.sentences.length){ finishBook(); return; }
+    if(S.mode==='trig'){
+      if(S.trigQueue>1){ S.trigQueue--; playCurrent(); }
+      else { S.trigQueue=0; S.trigArmed=true; updateHUD(); }
+    }else{
+      if(S.credits>0){ S.credits--; playCurrent(); }        // 消费堆积的句子配额
+    }
+  },400);                                                    // 等退出动画播完
+}
+function finishBook(){
+  S.playing=false; S.trigQueue=0; S.trigArmed=true;
+  hideSentence(); saveProgress(); updateHUD(); toast('本书已读完');
+}
+function start(){
+  if(!S.mode){ toast('请先在「播放模式」中选择一种方式'); return; }
+  if(!S.sentences.length){ toast('请先载入一本 txt 或 epub 书籍'); return; }
+  if(S.idx>=S.sentences.length) S.idx=0;
+  S.playing=true;
+  if(S.mode==='acc'&&S.credits>0){ S.credits--; playCurrent(); }
+  updateHUD();
+}
+function pause(){
+  S.playing=false; cancelSpeech(); hideSentence();
+  S.trigQueue=0; S.trigArmed=true;
+  saveProgress(); updateHUD();
+}
+
+/* ================= 步数输入 ================= */
+function addSteps(n){
+  S.steps+=n;
+  if(S.playing&&S.mode){
+    if(S.mode==='acc'){
+      S.stepAccum+=n;
+      while(S.stepAccum>=P.threshold-1e-9){ S.stepAccum-=P.threshold; S.credits++; }
+      if(!S.speaking&&S.credits>0){ S.credits--; playCurrent(); }
+    }else{
+      if(!S.speaking&&S.trigArmed){
+        S.trigArmed=false;
+        S.trigQueue=Math.max(1,Math.round(P.perTrigger));
+        playCurrent();
+      }
+    }
+  }
+  updateHUD();
+}
+
+/* 计步：设备运动传感器峰值检测 */
+let motionOn=false,lpa=0,peakArmed=true,lastStepAt=0;
+function onMotion(e){
+  const a=e.accelerationIncludingGravity;
+  if(!a||a.x==null)return;
+  const mag=Math.hypot(a.x||0,a.y||0,a.z||0);
+  lpa=lpa*0.88+mag*0.12;
+  const d=mag-lpa, now=performance.now();
+  if(peakArmed&&d>1.5&&now-lastStepAt>270){ peakArmed=false; lastStepAt=now; addSteps(1); }
+  else if(d<0.4) peakArmed=true;
+}
+ $('#motionBtn').addEventListener('click',async()=>{
+  if(motionOn){
+    window.removeEventListener('devicemotion',onMotion);
+    motionOn=false; $('#motionBtn').classList.remove('on'); $('#motionBtn').textContent='启用';
+    toast('计步已关闭'); return;
+  }
+  try{
+    if(!window.DeviceMotionEvent){ toast('此设备不支持运动传感器'); return; }
+    if(typeof DeviceMotionEvent.requestPermission==='function'){
+      const r=await DeviceMotionEvent.requestPermission();
+      if(r!=='granted'){ toast('未获得运动传感器权限'); return; }
+    }
+    window.addEventListener('devicemotion',onMotion);
+    motionOn=true; $('#motionBtn').classList.add('on'); $('#motionBtn').textContent='关闭';
+    toast('计步已启用，走动即可积累步数');
+  }catch(err){ toast('传感器不可用'); }
+});
+ $('#simBtn').addEventListener('click',()=>{                 // 桌面调试：模拟步行
+  simOn=!simOn;
+  $('#simBtn').classList.toggle('on',simOn);
+  if(simOn){ simTimer=setInterval(()=>addSteps(1),340); toast('模拟步行已开启（约每 0.34 秒一步）'); }
+  else{ clearInterval(simTimer); toast('模拟步行已关闭'); }
+});
+
+/* ================= 进度条 ================= */
+const seekEl=$('#seek');
+paintRange(seekEl);
+seekEl.addEventListener('pointerdown',()=>seeking=true);
+seekEl.addEventListener('input',()=>{
+  paintRange(seekEl);
+  $('#progTxt').textContent=`${seekEl.value} / ${S.sentences.length}`;
+});
+function endSeek(){
+  if(!seeking)return; seeking=false;
+  doSeek(parseInt(seekEl.value)||1);
+}
+seekEl.addEventListener('pointerup',endSeek);
+seekEl.addEventListener('change',endSeek);
+function doSeek(v){
+  if(!S.sentences.length)return;
+  cancelSpeech(); hideSentenceNow();
+  S.idx=clamp(v-1,0,S.sentences.length-1);
+  saveProgress();
+  if(S.playing){
+    if(S.mode==='acc'){ if(S.credits>0){ S.credits--; playCurrent(); } }
+    else{ S.trigArmed=true; S.trigQueue=0; }
+  }
+  updateHUD();
+}
+
+/* ================= 模式 / 解析切换 ================= */
+function applyModeUI(){
+  $('#modeAcc').classList.toggle('on',S.mode==='acc');
+  $('#modeTrig').classList.toggle('on',S.mode==='trig');
+  if(S.mode){
+    const other=S.mode==='acc'?$('#modeTrig'):$('#modeAcc');
+    other.classList.add('lockedout');
+    if(!other.dataset.locked){ other.insertAdjacentHTML('beforeend',ICON.lock); other.dataset.locked='1'; }
+    pThreshold.lock(S.mode==='trig');
+    pPerTrigger.lock(S.mode==='acc');
+  }
+}
+function chooseMode(m){
+  if(S.mode){ toast('播放模式本次已锁定，刷新页面可重新选择'); return; }
+  S.mode=m; applyModeUI();
+  toast(m==='acc'?'已选择：步数累积播放（每满阈值步数读一句）':'已选择：步数触发播放（每次触发连读 X 句）');
+  updateHUD();
+}
+ $('#modeAcc').addEventListener('click',()=>chooseMode('acc'));
+ $('#modeTrig').addEventListener('click',()=>chooseMode('trig'));
+
+function setParseMode(m){
+  if(S.parseMode===m)return;
+  S.parseMode=m; LS.setItem('tj_parse',m);
+  $('#parseNovel').classList.toggle('on',m==='novel');
+  $('#parseScript').classList.toggle('on',m==='script');
+  if(!rawText){ toast(m==='novel'?'已切换为小说解析':'已切换为剧本解析'); return; }
+  const anchor=S.sentences[S.idx]? S.sentences[S.idx].start:0;
+  buildSentences();
+  let i=0; while(i<S.sentences.length&&S.sentences[i].start<=anchor)i++;
+  S.idx=Math.max(0,i-1);
+  cancelSpeech(); hideSentenceNow();
+  if(S.playing){
+    if(S.mode==='acc'){ if(S.credits>0){ S.credits--; playCurrent(); } }
+    else{ S.trigArmed=true; S.trigQueue=0; }
+  }
+  toast(m==='novel'?'已切换为小说解析':'已切换为剧本解析');
+  updateHUD();
+}
+ $('#parseNovel').addEventListener('click',()=>setParseMode('novel'));
+ $('#parseScript').addEventListener('click',()=>setParseMode('script'));
+
+/* ================= 面板开合 / 全屏 / 底栏 ================= */
+function setPanel(hidden){
+  panelHidden=hidden;
+  document.body.classList.toggle('panel-hidden',hidden);
+  LS.setItem('tj_panelHidden',hidden?'1':'0');
+}
+ $('#collapseBtn').addEventListener('click',()=>setPanel(true));
+ $('#handle').addEventListener('click',()=>setPanel(false));
+ $('#fsBtn').addEventListener('click',()=>{
+  if(document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(()=>toast('无法进入全屏'));
 });
 document.addEventListener('fullscreenchange',()=>{
-  document.body.classList.toggle('fs',!!document.fullscreenElement);
-  setFsBtn();
+  const fs=!!document.fullscreenElement;
+  document.body.classList.toggle('fs',fs);
+  $('#fsBtn').innerHTML=fs?ICON.shrink:ICON.expand;
 });
 
-/* ============ 面板收起 / 展开 ============ */
-function setPanel(closed){
-  $('#panelWrap').classList.toggle('closed',closed);
-  document.body.classList.toggle('panel-closed',closed);
-}
- $('#btnCollapse').addEventListener('click',()=>setPanel(true));
- $('#floatToggle').addEventListener('click',()=>setPanel(false));
-
-/* ============ 图标注入 ============ */
- $('#btnUpload .ic').innerHTML=IC.up;
- $('#btnSpeak .ic').innerHTML=IC.play;
- $('#btnFs .ic').innerHTML=IC.exp;
- $('#btnPed .ic').innerHTML=SV('<ellipse cx="8" cy="7.5" rx="3" ry="4.5" transform="rotate(-14 8 7.5)"/><ellipse cx="15.5" cy="15.5" rx="3" ry="4.5" transform="rotate(12 15.5 15.5)"/>');
- $('#btnCollapse').innerHTML=IC.chevD;
- $('#floatToggle').innerHTML=IC.chevU;
-
-/* ============ 启动：恢复上次的书籍与进度 ============ */
-  try{
-    const b=JSON.parse(localStorage.getItem('sr_book')||'null');
-    if(b&&b.text)Book=b;
-  }catch{}
-  if(Book){
-    analyze();
-    const saved=parseInt(localStorage.getItem('sr_idx')||'0')||0;
-    S.idx=S.sentences.length?Math.min(saved,S.sentences.length-1):0;
-    toast(`已恢复《${Book.name}》，从第 ${S.idx+1} 句继续`);
+/* ================= HUD 刷新 ================= */
+function updateHUD(){
+  const total=S.sentences.length;
+  let st='待机',sub='';
+  if(!total){ st='待机'; sub='先在「书籍」中载入一本 txt / epub'; }
+  else if(S.playing&&S.speaking){
+    st='朗读中';
+    if(S.mode==='trig') sub=`本组剩余 ${S.trigQueue} 句`;
+    else sub=S.credits>0?`已堆积 ${S.credits} 句`:'读完等待下一步数';
   }
-  updateAll();
+  else if(S.playing&&S.mode==='acc'){
+    st='等待步数';
+    sub=`累积 ${S.stepAccum.toFixed(2)} / ${P.threshold.toFixed(2)} 步`+(S.credits>0?` · 堆积 ${S.credits} 句`:'');
+    if(!motionOn&&!simOn) sub+=' · 计步未启用';
+  }
+  else if(S.playing&&S.mode==='trig'){
+    st='等待步数';
+    sub=(S.trigArmed?'下一步数上涨将连读 ':'准备中 ')+Math.max(1,Math.round(P.perTrigger))+' 句';
+    if(!motionOn&&!simOn) sub+=' · 计步未启用';
+  }
+  else{
+    st='已暂停';
+    sub=!S.mode?'请选择播放模式':(S.mode==='acc'?'继续后按步数累积播放':'继续后按步数触发播放');
+  }
+  $('#stateTxt').textContent=st; $('#stateSub').textContent=sub;
+  $('#stepNum').textContent=S.steps;
+
+  const idx=clamp(S.idx,0,Math.max(0,total-1));
+  $('#progTxt').textContent=total?`${idx+1} / ${total}`:'0 / 0';
+  if(!seeking){ seekEl.max=Math.max(1,total); seekEl.value=total?idx+1:1; paintRange(seekEl); }
+  $('#miniFill').style.width=total>1?(idx/(total-1)*100)+'%':(total?'100%':'0%');
+  $('#playBtn').innerHTML=S.playing?ICON.pause:ICON.play;
+}
+
+/* ================= 文件载入 ================= */
+async function readTextFile(f){
+  const buf=await f.arrayBuffer();
+  let txt=new TextDecoder('utf-8').decode(buf);
+  if((txt.match(/\uFFFD/g)||[]).length>txt.length*0.01){     // UTF-8 乱码 → 尝试 GBK
+    try{ txt=new TextDecoder('gbk').decode(buf); }catch(e){}
+  }
+  return txt.replace(/^\uFEFF/,'');
+}
+function zipPath(base,rel){
+  try{ return decodeURIComponent(new URL(rel,'http://x/'+(base||'')).pathname.replace(/^\//,'')); }
+  catch(e){ return rel; }
+}
+async function readEpub(f){
+  const zip=await JSZip.loadAsync(f);
+  const opfName=Object.keys(zip.files).find(n=>/\.opf$/i.test(n));
+  if(!opfName) throw 'EPUB 缺少 OPF 结构';
+  const doc=new DOMParser().parseFromString(await zip.file(opfName).async('string'),'application/xml');
+  const base=opfName.replace(/[^/]*$/,'');
+  const manifest={};
+  doc.querySelectorAll('manifest > item').forEach(it=>{
+    manifest[it.getAttribute('id')]={href:it.getAttribute('href'),type:it.getAttribute('media-type')||''};
+  });
+  const order=[...doc.querySelectorAll('spine > itemref')]
+    .map(r=>r.getAttribute('idref')).filter(id=>manifest[id]);
+  let parts=[];
+  for(const id of order){
+    const item=manifest[id];
+    if(item.type&&!/xhtml|html/i.test(item.type))continue;
+    const path=zipPath(base,item.href);
+    const zf=zip.file(path)||zip.file(path.replace(/^\//,''))
+      ||zip.file(Object.keys(zip.files).find(n=>n.endsWith('/'+item.href.split('/').pop()))||'');
+    if(!zf)continue;
+    const d=new DOMParser().parseFromString(await zf.async('string'),'text/html');
+    if(!d.body)continue;
+    d.querySelectorAll('script,style,head,nav').forEach(e=>e.remove());
+    d.body.querySelectorAll('p,div,h1,h2,h3,h4,h5,h6,li,blockquote,tr,br')
+      .forEach(el=>el.insertAdjacentText('afterend','\n'));
+    parts.push((d.body.textContent||'').replace(/[ \t\u3000]+\n/g,'\n'));
+  }
+  return parts.join('\n');
+}
+ $('#loadBtn').addEventListener('click',()=>$('#fileInput').click());
+ $('#fileInput').addEventListener('change',async e=>{
+  const f=e.target.files[0]; if(!f)return;
+  $('#loadBtn').classList.add('on');
+  try{
+    let text=/\.epub$/i.test(f.name)? await readEpub(f): await readTextFile(f);
+    if(!text||!text.trim()) throw '未解析到文本内容';
+    text=text.replace(/\r/g,'');
+    rawText=text; bookName=f.name.replace(/\.(txt|epub)$/i,'');
+    S.idx=0; S.credits=0; S.stepAccum=0;
+    cancelSpeech(); hideSentenceNow();
+    buildSentences();
+    await idbSet('book',{name:f.name,text}).catch(()=>{});
+    toast(`已载入《${bookName}》· 共 ${S.sentences.length} 句`);
+    saveProgress();
+  }catch(err){ toast('载入失败：'+(err.message||err)); }
+  $('#loadBtn').classList.remove('on');
+  $('#loadBtn').classList.remove('busy');
+  e.target.value='';
+  updateHUD();
+});
+
+/* ================= 持久化 / 提示 / 初始化 ================= */
+function saveProgress(){
+  if(bookName) LS.setItem('tj_prog',JSON.stringify({name:bookName,idx:S.idx}));
+}
+let toastTimer;
+function toast(msg){
+  const t=$('#toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2400);
+}
+ $('#playBtn').addEventListener('click',()=>{ S.playing?pause():start(); });
+
+  buildParams();
+  $('#playBtn').innerHTML=ICON.play;
+  $('#loadBtn').innerHTML=ICON.upload;
+  $('#fsBtn').innerHTML=ICON.expand;
+  $('#collapseBtn').innerHTML=ICON.down;
+  $('#handle').innerHTML=ICON.upChevron;
+  $('#parseNovel').classList.toggle('on',S.parseMode==='novel');
+  $('#parseScript').classList.toggle('on',S.parseMode==='script');
+  if(LS.getItem('tj_panelHidden')==='1') setPanel(true);
+
+  try{
+    const book=await idbGet('book');
+    const prog=JSON.parse(LS.getItem('tj_prog')||'null');
+    if(book&&book.text){
+      rawText=book.text;
+      bookName=book.name.replace(/\.(txt|epub)$/i,'');
+      if(prog&&prog.name===book.name) S.idx=clamp(prog.idx|0,0,1e9);
+      buildSentences();
+    }
+  }catch(e){}
+  updateHUD();
 })();
 </script>
 </body>
